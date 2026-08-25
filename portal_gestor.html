@@ -1,0 +1,1868 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>Fertgrow Gestão</title>
+<link rel="manifest" href="manifest-gestor.json" />
+<meta name="theme-color" content="#0B6B33" />
+<link rel="apple-touch-icon" href="icons/icon-180.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Fertgrow Gestão" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root{
+    --bg:#0a1410; --surface:#101d16; --surface2:#16261d; --border:#213328;
+    --text:#e9f2ea; --muted:#8aa08d; --brand:#0B6B33; --brand-light:#AFD676;
+    --emerald:#34d399; --amber:#fbbf24; --rose:#fb7185; --cyan:#22d3ee; --violet:#a78bfa;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',Inter,sans-serif;font-size:15px;-webkit-tap-highlight-color:transparent;}
+  #app{max-width:480px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;padding-bottom:76px;}
+  header.top{padding:16px 18px;border-bottom:1px solid var(--border);position:sticky;top:0;background:rgba(10,20,16,.95);backdrop-filter:blur(6px);z-index:20;}
+  header.top .brand{font-weight:700;font-size:15px;}
+  header.top .who{font-size:12px;color:var(--muted);margin-top:2px;}
+  main{flex:1;padding:16px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;}
+  .input{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:11px 12px;border-radius:9px;font-size:15px;}
+  .input:focus{outline:none;border-color:var(--brand);}
+  .btn{width:100%;background:var(--brand);color:#fff;border:none;padding:12px 16px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;}
+  .btn:active{background:var(--brand-light);}
+  .btn.ghost{background:transparent;border:1px solid var(--border);color:var(--muted);}
+  .btn.small{padding:8px 12px;font-size:13px;width:auto;}
+  .btn.danger{background:var(--rose);}
+  .msg{font-size:13px;padding:10px 12px;border-radius:9px;margin-bottom:14px;}
+  .msg.err{background:rgba(251,113,133,.12);border:1px solid rgba(251,113,133,.35);color:#fca5b1;}
+  .msg.ok{background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.35);color:#6ee7b7;}
+  .tabs2{display:flex;gap:6px;background:var(--surface2);padding:4px;border-radius:10px;margin-bottom:16px;overflow-x:auto;}
+  .tabs2 .t{flex:0 0 auto;text-align:center;padding:8px 12px;border-radius:7px;font-size:13px;color:var(--muted);cursor:pointer;white-space:nowrap;}
+  .tabs2 .t.active{background:var(--brand);color:#fff;font-weight:600;}
+  nav.bottom{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);display:flex;max-width:480px;margin:0 auto;z-index:30;}
+  nav.bottom .n{flex:1;text-align:center;padding:10px 4px 12px;color:var(--muted);cursor:pointer;font-size:11px;position:relative;}
+  nav.bottom .n .ic{font-size:19px;display:block;margin-bottom:2px;}
+  nav.bottom .n.active{color:var(--brand-light);}
+  .nav-badge{position:absolute;top:2px;right:calc(50% - 22px);background:var(--rose);color:#fff;border-radius:999px;min-width:16px;height:16px;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;}
+  h2.section{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:0 0 12px;font-weight:700;}
+  .kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .kpi .label{font-size:11px;color:var(--muted);}
+  .kpi .value{font-size:22px;font-weight:700;margin-top:4px;}
+  .kpi-click{cursor:pointer;}
+  .tile-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .tile{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 14px;cursor:pointer;text-align:center;}
+  .tile:active{border-color:var(--brand-light);}
+  .tile .ic{font-size:24px;display:block;margin-bottom:6px;}
+  .tile .lbl{font-size:12.5px;font-weight:600;}
+  .menu-row{display:flex;align-items:center;justify-content:space-between;padding:14px 4px;border-bottom:1px solid rgba(33,51,40,.6);cursor:pointer;}
+  .menu-row:last-child{border-bottom:none;}
+  .menu-row .lbl{font-size:14px;font-weight:600;}
+  .menu-row .ic{font-size:18px;margin-right:10px;}
+  .menu-row .arrow{color:var(--muted);}
+  .badge{padding:3px 9px;border-radius:6px;font-size:11px;font-weight:600;white-space:nowrap;}
+  .badge.presente{background:rgba(11,107,51,.15);color:var(--brand-light);border:1px solid rgba(11,107,51,.35);}
+  .badge.falta{background:rgba(251,113,133,.15);color:var(--rose);border:1px solid rgba(251,113,133,.35);}
+  .badge.folga{background:#1c2b21;color:var(--muted);}
+  .badge.ferias{background:rgba(34,211,238,.15);color:var(--cyan);border:1px solid rgba(34,211,238,.35);}
+  .badge.pendente{background:rgba(251,191,36,.15);color:var(--amber);border:1px solid rgba(251,191,36,.35);}
+  .badge.aprovado{background:rgba(52,211,153,.15);color:var(--emerald);border:1px solid rgba(52,211,153,.35);}
+  .badge.rejeitado{background:rgba(251,113,133,.15);color:var(--rose);border:1px solid rgba(251,113,133,.35);}
+  .ts-progress{background:rgba(11,107,51,.15);color:var(--brand-light);border:1px solid rgba(11,107,51,.35);}
+  .modal-backdrop{position:fixed;inset:0;background:rgba(4,10,7,.7);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto;}
+  .modal h3{margin:0;font-size:16px;}
+  .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;flex-wrap:wrap;}
+  .req-row{padding:12px 0;border-bottom:1px solid rgba(33,51,40,.6);cursor:pointer;}
+  .req-row:last-child{border-bottom:none;}
+  .req-row .d{font-size:13.5px;font-weight:600;}
+  .req-row .sub{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .row-flex{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .empty{text-align:center;color:var(--muted);padding:40px 16px;font-size:13px;}
+  .spinner{text-align:center;padding:40px;color:var(--muted);font-size:13px;}
+  .alert-banner{background:rgba(251,113,133,.1);border:1px solid rgba(251,113,133,.3);border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:12.5px;display:flex;gap:8px;align-items:flex-start;}
+  a.link{color:var(--brand-light);cursor:pointer;text-decoration:underline;font-size:13px;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="modalRoot"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ===================================================================
+  // CONFIGURAÇÃO — mesmo projeto Supabase do painel e do portal do colaborador.
+  // ===================================================================
+  const SUPABASE_URL = "https://eusvotyusfwxolczqzlc.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_2Uee6RYvUtvR5m4Vy6yyDQ_fgEeGEsX";
+
+  const configured = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
+  const supabase = configured && window.supabase
+    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    : null;
+
+  // ---------------- helpers ----------------
+  const $ = (sel, root=document) => root.querySelector(sel);
+  const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+  const esc = (s) => String(s??"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  // new Date().toISOString() converte pra UTC — perto da meia-noite local (Brasil, UTC-3) isso pode
+  // devolver o dia de AMANHÃ. Monta a data a partir dos componentes locais em vez disso.
+  const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+  const uid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+    const r = Math.random()*16|0, v = c==="x" ? r : (r&0x3|0x8);
+    return v.toString(16);
+  });
+  function toISO(d){ return d.toISOString().slice(0,10); }
+  function brDate(iso){ if(!iso) return "—"; const [y,m,d]=String(iso).slice(0,10).split("-"); return `${d}/${m}/${y}`; }
+  function addDays(iso,n){ const d=new Date(iso+"T00:00:00"); d.setDate(d.getDate()+n); return toISO(d); }
+  function addMonths(monthStr, delta){
+    const [y,m] = monthStr.split("-").map(Number);
+    const d = new Date(y, (m-1)+delta, 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  }
+  function diffDays(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
+  function round2(n){ return Math.round((Number(n)||0)*100)/100; }
+  function money(n){ return (n||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL",maximumFractionDigits:0}); }
+  function monthRangeLabel(month){
+    const [y,m] = month.split("-");
+    return new Date(+y, +m-1, 1).toLocaleDateString("pt-BR", {month:"long", year:"numeric"});
+  }
+  const WEEKDAY_LABELS = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const WEEKDAY_LABELS_LONG = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
+  const BILLING_KEYS = ["hh","insalubridade","periculosidade","bonusAssiduidade","planoSaude","valeTransporte","valeRefeicao"];
+  const BILLING_LABELS = {
+    hh:"H.H (hora trabalhada)", insalubridade:"Insalubridade", periculosidade:"Periculosidade",
+    bonusAssiduidade:"Bônus assiduidade", planoSaude:"Plano de saúde",
+    valeTransporte:"Vale transporte", valeRefeicao:"Vale refeição",
+  };
+  const TURNOS = ["Manhã","Tarde","Noite","Turno único"];
+  const ATTENDANCE_STATUSES = ["presente","falta","folga","ferias"];
+  const ATTENDANCE_STATUS_LABELS = { presente:"Presente", falta:"Falta", folga:"Folga", ferias:"Férias" };
+  const TIME_OFF_TYPE_LABEL = { falta:"Falta", folga:"Folga", ferias:"Férias", solicitacao_geral:"Solicitação", atraso:"Atraso" };
+  const REQUEST_STATUS_LABEL = { pendente:"Pendente", aprovado:"Aprovado", rejeitado:"Rejeitado" };
+  function attendanceStatus(entry){
+    if(!entry) return null;
+    if(entry.status) return entry.status;
+    return entry.present ? "presente" : "falta";
+  }
+  // Padrão CLT mínimo (Art. 7º XVI) — sobrescrito em loadAllData() com o valor real configurado no
+  // painel desktop (tabela overtime_rules), se o schema já tiver essa tabela.
+  const overtimeRules = { normalPct: 50, restDayPct: 100 };
+
+  // ---------------- conversores linha<->objeto (mesmo formato do painel do gestor) ----------------
+  function companyFromRow(r){ return { id:r.id, name:r.name, billing:r.billing||{}, roleRates:r.role_rates||[] }; }
+  function companyToRow(c){ return { id:c.id, name:c.name, billing:c.billing||{}, role_rates:c.roleRates||[] }; }
+  function shiftFromRow(r){ return { id:r.id, name:r.name, startTime:r.start_time, endTime:r.end_time, breakMinutes:r.break_minutes, hoursPerDay:r.hours_per_day, weeklyHours:r.weekly_hours, mode:r.mode, weekdays:r.weekdays||[], cycleWork:r.cycle_work, cycleRest:r.cycle_rest, cycleAnchor:r.cycle_anchor }; }
+  function shiftToRow(s){ return { id:s.id, name:s.name, start_time:s.startTime, end_time:s.endTime, break_minutes:Number(s.breakMinutes||0), hours_per_day:Number(s.hoursPerDay||0), weekly_hours:Number(s.weeklyHours||44), mode:s.mode, weekdays:s.weekdays||[], cycle_work:Number(s.cycleWork||1), cycle_rest:Number(s.cycleRest||1), cycle_anchor:s.cycleAnchor||null }; }
+  function holidayFromRow(r){ return { id:r.id, date:r.date, name:r.name, recurring:!!r.recurring }; }
+  function holidayToRow(h){ return { id:h.id, date:h.date, name:h.name, recurring:!!h.recurring }; }
+  function dssTopicFromRow(r){ return { id:r.id, date:r.date, title:r.title, description:r.description||"" }; }
+  function dssTopicToRow(t){ return { date:t.date, title:t.title, description:t.description||"" }; }
+  function checklistCategoryFromRow(r){ return { id:r.id, name:r.name, order:r.order||0 }; }
+  function checklistCategoryToRow(c){ return { id:c.id, name:c.name, order:c.order||0 }; }
+  function checklistAreaFromRow(r){ return { id:r.id, categoryId:r.category_id, name:r.name, order:r.order||0 }; }
+  function checklistAreaToRow(a){ return { id:a.id, category_id:a.categoryId, name:a.name, order:a.order||0 }; }
+  function checklistEquipmentFromRow(r){ return { id:r.id, areaId:r.area_id, name:r.name, order:r.order||0 }; }
+  function checklistEquipmentToRow(e){ return { id:e.id, area_id:e.areaId, name:e.name, order:e.order||0 }; }
+  function employeeToRow(e){ return { id:e.id, name:e.name, email:e.email?e.email.trim().toLowerCase():null, cargo:e.cargo||"", company_id:e.companyId||null, shift_id:e.shiftId||null, admissao:e.admissao||null, status:e.status||"Ativo", rates:e.rates||{}, ferias_saldo_dias: e.feriasSaldoDias ?? 30 }; }
+  function employeeFromRow(r, attendance, shiftHistory, profile){ return { id:r.id, name:r.name, email:r.email||"", cargo:r.cargo||"", companyId:r.company_id||"", shiftId:r.shift_id||"", admissao:r.admissao||"", status:r.status||"Ativo", rates:r.rates||{}, feriasSaldoDias: r.ferias_saldo_dias ?? 30, attendance: attendance||[], shiftHistory: shiftHistory||[], profileId: profile?.id||null, lockedAt: profile?.locked_at||null }; }
+  function shiftHistoryRowToObj(r){ return { id:r.id, shiftId:r.shift_id, effectiveFrom:r.effective_from }; }
+  function shiftHistoryObjToRow(employeeId, h){ return { employee_id:employeeId, shift_id:h.shiftId||null, effective_from:h.effectiveFrom }; }
+  function attendanceToRow(employeeId, a){ return { id:a.id, employee_id:employeeId, date:a.date, turno:a.turno||"", hours:Number(a.hours||0), status: attendanceStatus(a), expected_hours: a.expectedHours ?? null, justification: a.justification||"", atestado: !!a.atestado, atraso: !!a.atraso }; }
+  function attendanceFromRow(r){ return { id:r.id, date:r.date, turno:r.turno||"", hours:Number(r.hours||0), status:r.status, expectedHours:r.expected_hours, justification:r.justification||"", atestado: !!r.atestado, atraso: !!r.atraso }; }
+  function timeOffRequestToRow(r){ return { id:r.id, employee_id:r.employeeId, type:r.type, date_start:r.dateStart, date_end:r.dateEnd, reason:r.reason||"", status:r.status||"pendente", dias_vendidos:r.diasVendidos||0, title:r.title||null, admin_response:r.adminResponse||null, admin_responded_at:r.adminRespondedAt||null, colaborador_reply:r.colaboradorReply||null, finalizado_em:r.finalizadoEm||null }; }
+  function timeOffRequestFromRow(r){ return { id:r.id, employeeId:r.employee_id, type:r.type, dateStart:r.date_start, dateEnd:r.date_end, reason:r.reason||"", status:r.status, diasVendidos:r.dias_vendidos||0, createdAt:r.created_at, title:r.title||"", adminResponse:r.admin_response||"", ticketNumber:r.ticket_number||null, adminRespondedAt:r.admin_responded_at||null, colaboradorReply:r.colaborador_reply||"", finalizadoEm:r.finalizado_em||null }; }
+
+  // ---------------- cálculos de turno/frequência/custo (mesma lógica do painel do gestor) ----------------
+  function timeToMinutes(t){ const [h,m] = String(t||"0:0").split(":").map(Number); return (h||0)*60 + (m||0); }
+  function shiftRawDurationHours(startTime, endTime){
+    let diff = timeToMinutes(endTime) - timeToMinutes(startTime);
+    if(diff <= 0) diff += 24*60;
+    return diff/60;
+  }
+  function shiftWorkedHours(startTime, endTime, breakMinutes){
+    return Math.max(0, shiftRawDurationHours(startTime, endTime) - Number(breakMinutes||0)/60);
+  }
+  // Sugestão de intervalo pela CLT (Art. 71): 1h acima de 6h de jornada, 15min entre 4h e 6h, sem
+  // intervalo obrigatório até 4h.
+  function cltSuggestedBreakMinutes(rawHours){
+    if(rawHours > 6) return 60;
+    if(rawHours > 4) return 15;
+    return 0;
+  }
+  function monthlyDivisor(shift){ return Number(shift?.weeklyHours || 44) * 5; }
+  function shiftLabel(shift){
+    if(!shift) return "—";
+    if(shift.mode==="semanal") return `${esc(shift.name)} (${(shift.weekdays||[]).map(d=>WEEKDAY_LABELS[d]).join("/")||"sem dias"}, ${shift.hoursPerDay}h/dia, ${shift.weeklyHours||44}h/semana)`;
+    return `${esc(shift.name)} (escala ${shift.cycleWork}x${shift.cycleRest}, ${shift.hoursPerDay}h/dia, ${shift.weeklyHours||44}h/semana)`;
+  }
+  function findHoliday(dateISO){
+    return state.holidays.find(h => h.date===dateISO || (h.recurring && h.date.slice(5)===dateISO.slice(5)));
+  }
+  function shiftWorksOnDate(shift, dateISO){
+    if(!shift) return false;
+    if(shift.mode==="semanal"){
+      const dow = new Date(dateISO+"T00:00:00").getDay();
+      return (shift.weekdays||[]).includes(dow);
+    }
+    const cycleLen = Math.max(1, Number(shift.cycleWork||0) + Number(shift.cycleRest||0));
+    const anchor = shift.cycleAnchor || todayISO();
+    let offset = diffDays(anchor, dateISO) % cycleLen;
+    if(offset < 0) offset += cycleLen;
+    return offset < Number(shift.cycleWork||0);
+  }
+  function shiftIdForEmployeeOnDate(employee, dateISO){
+    const history = employee?.shiftHistory || [];
+    if(!history.length) return employee?.shiftId;
+    let resolved = null;
+    history.forEach(h => { if(h.effectiveFrom <= dateISO && (!resolved || h.effectiveFrom > resolved.effectiveFrom)) resolved = h; });
+    if(resolved) return resolved.shiftId;
+    return history.reduce((a,b) => a.effectiveFrom < b.effectiveFrom ? a : b).shiftId;
+  }
+  function scheduledDayInfo(employee, dateISO){
+    const shift = state.shifts.find(s=>s.id===shiftIdForEmployeeOnDate(employee, dateISO));
+    const holiday = findHoliday(dateISO);
+    const scheduled = !!shift && shiftWorksOnDate(shift, dateISO) && !holiday;
+    const attendance = (employee?.attendance||[]).find(a=>a.date===dateISO);
+    return { shift, holiday, scheduled, attendance };
+  }
+  function attendanceDayStyle(employee, dateISO){
+    const info = scheduledDayInfo(employee, dateISO);
+    if(info.holiday) return { bg:"rgba(167,139,250,.22)", color:"#c4b5fd", label:info.holiday.name };
+    const status = info.attendance ? attendanceStatus(info.attendance) : null;
+    if(status==="presente") return { bg:"rgba(52,211,153,.22)", color:"var(--emerald)", label:"Trabalhou" };
+    if(status==="falta") return { bg:"rgba(251,113,133,.22)", color:"var(--rose)", label:"Faltou" };
+    if(status==="ferias") return { bg:"rgba(34,211,238,.22)", color:"var(--cyan)", label:"Férias" };
+    if(status==="folga") return { bg:"transparent", color:"var(--muted)", label:"Folga (registrada)" };
+    if(info.scheduled) return { bg:"rgba(251,191,36,.22)", color:"var(--amber)", label:"Deveria trabalhar" };
+    return { bg:"transparent", color:"var(--muted)", label:"Folga" };
+  }
+  function attendanceEntryHoursBreakdown(employee, entry){
+    if(!entry || attendanceStatus(entry)!=="presente") return { normalHours:0, overtimeHours:0, overtimeKind:null };
+    const hours = round2(Number(entry.hours||0));
+    if(hours<=0) return { normalHours:0, overtimeHours:0, overtimeKind:null };
+    const info = scheduledDayInfo(employee, entry.date);
+    const expected = entry.expectedHours ?? (info.shift ? info.shift.hoursPerDay : hours);
+    if(!info.scheduled) return { normalHours:0, overtimeHours:hours, overtimeKind:"restday" };
+    if(hours > expected) return { normalHours: expected, overtimeHours: round2(hours-expected), overtimeKind:"workday" };
+    return { normalHours: hours, overtimeHours:0, overtimeKind:null };
+  }
+  function attendanceEntryCost(employee, entry, hhRate){
+    const b = attendanceEntryHoursBreakdown(employee, entry);
+    const pct = b.overtimeKind==="restday" ? overtimeRules.restDayPct : overtimeRules.normalPct;
+    const overtimeRate = Number(hhRate||0) * (1 + pct/100);
+    const normalCost = b.normalHours * Number(hhRate||0);
+    const overtimeCost = b.overtimeHours * overtimeRate;
+    return { ...b, pct, normalCost: round2(normalCost), overtimeCost: round2(overtimeCost), total: round2(normalCost+overtimeCost) };
+  }
+  function computeStreak(employee){
+    const statusByDate = new Map((employee.attendance||[]).map(a=>[a.date, attendanceStatus(a)]));
+    let streak = 0, cursor = todayISO();
+    if(!statusByDate.has(cursor)) cursor = addDays(cursor, -1);
+    let guard = 0;
+    while(statusByDate.get(cursor)==="presente" && guard < 3660){ streak++; cursor = addDays(cursor, -1); guard++; }
+    return streak;
+  }
+  function employeeMonthStats(employee, month){
+    const entries = (employee.attendance||[]).filter(a => a.date.slice(0,7)===month);
+    const present = entries.filter(a=>attendanceStatus(a)==="presente");
+    const absent = entries.filter(a=>attendanceStatus(a)==="falta");
+    const folga = entries.filter(a=>attendanceStatus(a)==="folga");
+    const ferias = entries.filter(a=>attendanceStatus(a)==="ferias");
+    const hours = round2(present.reduce((s,a)=>s+Number(a.hours||0), 0));
+    let overtimeHours = 0;
+    present.forEach(a => { overtimeHours += attendanceEntryHoursBreakdown(employee, a).overtimeHours; });
+    return { workedDays: present.length, absences: absent.length, folgas: folga.length, ferias: ferias.length, hours, overtimeHours: round2(overtimeHours) };
+  }
+  function employeeMonthUnjustifiedAbsences(employee, month){
+    return (employee.attendance||[]).filter(a => a.date.slice(0,7)===month && attendanceStatus(a)==="falta" && !a.justification && !a.atestado).length;
+  }
+  function employeeMonthOvertimeCost(employee, company, month){
+    if(!company || !company.billing.hh) return 0;
+    const hhRate = Number(employee.rates.hh||0);
+    const entries = (employee.attendance||[]).filter(a=>a.date.slice(0,7)===month);
+    return round2(entries.reduce((s,a)=>s+attendanceEntryCost(employee, a, hhRate).overtimeCost, 0));
+  }
+  function employeeMonthRealCost(employee, company, month){
+    if(!company) return 0;
+    let total = 0;
+    if(company.billing.hh){
+      const hhRate = Number(employee.rates.hh||0);
+      const entries = (employee.attendance||[]).filter(a=>a.date.slice(0,7)===month);
+      total += entries.reduce((s,a)=>s+attendanceEntryCost(employee, a, hhRate).total, 0);
+    }
+    if(month <= todayISO().slice(0,7)){
+      BILLING_KEYS.filter(k=>k!=="hh").forEach(key => { if(company.billing[key]) total += Number(employee.rates[key]||0); });
+    }
+    return round2(total);
+  }
+  function isEmployeeOffOnDate(employee, dateISO){
+    const entry = (employee.attendance||[]).find(a=>a.date===dateISO);
+    if(entry && ["ferias","folga"].includes(attendanceStatus(entry))) return true;
+    return state.timeOffRequests.some(r => r.employeeId===employee.id && r.type==="ferias" && r.status==="aprovado" && r.dateStart<=dateISO && dateISO<=r.dateEnd);
+  }
+  function scheduledDatesInRangeForEmployee(employee, startISO, endISO){
+    const dates = [];
+    if(!startISO || !endISO || endISO < startISO) return dates;
+    let cursor = startISO, guard = 0;
+    while(cursor <= endISO && guard < 3660){
+      const shift = state.shifts.find(s=>s.id===shiftIdForEmployeeOnDate(employee, cursor));
+      if(shift && shiftWorksOnDate(shift, cursor) && !findHoliday(cursor)) dates.push(cursor);
+      cursor = addDays(cursor, 1); guard++;
+    }
+    return dates;
+  }
+  function employeeMonthEstimatedCost(employee, company, month){
+    if(!company) return 0;
+    const [y,m] = month.split("-").map(Number);
+    const monthStart = `${month}-01`;
+    const monthEnd = `${month}-${String(new Date(y,m,0).getDate()).padStart(2,"0")}`;
+    let total = 0;
+    if(company.billing.hh){
+      const hhRate = Number(employee.rates.hh||0);
+      const entries = (employee.attendance||[]).filter(a=>a.date.slice(0,7)===month);
+      total += entries.reduce((s,a)=>s+attendanceEntryCost(employee, a, hhRate).total, 0);
+      const recordedDates = new Set(entries.map(a=>a.date));
+      const missingScheduledDates = scheduledDatesInRangeForEmployee(employee, monthStart, monthEnd)
+        .filter(d => !recordedDates.has(d) && !isEmployeeOffOnDate(employee, d));
+      missingScheduledDates.forEach(d => {
+        const shift = state.shifts.find(s=>s.id===shiftIdForEmployeeOnDate(employee, d));
+        if(shift) total += shiftWorkedHours(shift.startTime, shift.endTime, shift.breakMinutes) * hhRate;
+      });
+    }
+    BILLING_KEYS.filter(k=>k!=="hh").forEach(key => { if(company.billing[key]) total += Number(employee.rates[key]||0); });
+    return round2(total);
+  }
+  function companyMonthCostSummary(company, month){
+    const employees = state.employees.filter(e=>e.companyId===company.id);
+    let real = 0, estimated = 0;
+    employees.forEach(e => { real += employeeMonthRealCost(e, company, month); estimated += employeeMonthEstimatedCost(e, company, month); });
+    return { real: round2(real), estimated: round2(estimated), employeeCount: employees.length };
+  }
+  function computeDayRoster(dateISO){
+    const present = [], off = [];
+    state.employees.filter(e=>e.status==="Ativo").forEach(employee => {
+      const info = scheduledDayInfo(employee, dateISO);
+      if(!info.scheduled) return;
+      const status = info.attendance ? attendanceStatus(info.attendance) : null;
+      if(isEmployeeOffOnDate(employee, dateISO)){ off.push({ employee, status }); return; }
+      present.push({ employee, status, shift: info.shift });
+    });
+    present.sort((a,b)=>a.employee.name.localeCompare(b.employee.name));
+    off.sort((a,b)=>a.employee.name.localeCompare(b.employee.name));
+    return { present, off };
+  }
+  function timeOffRequestToAttendanceRows(req, employee){
+    const byDate = new Map((employee.attendance||[]).map(a=>[a.date, a]));
+    const makeRow = (date, status, justification) => {
+      const existing = byDate.get(date);
+      return { id: existing?.id || uid(), date, status, hours:0, turno:"", expectedHours:null, justification: justification||"" };
+    };
+    if(req.type==="falta") return [makeRow(req.dateStart, "falta", req.reason)];
+    if(req.type==="folga") return [makeRow(req.dateStart, "folga", "")];
+    // Atraso não é uma ausência — é um dia trabalhado com a flag "atraso" marcada. Preserva
+    // horas/turno já lançados nesse dia (se houver); sem lançamento ainda, usa o previsto pelo turno.
+    if(req.type==="atraso"){
+      const existing = byDate.get(req.dateStart);
+      const shift = state.shifts.find(s=>s.id===shiftIdForEmployeeOnDate(employee, req.dateStart));
+      return [{
+        id: existing?.id || uid(), date: req.dateStart, status: "presente",
+        hours: existing ? existing.hours : (shift ? shiftWorkedHours(shift.startTime, shift.endTime, shift.breakMinutes) : 0),
+        turno: existing?.turno || (shift ? shift.name : ""),
+        expectedHours: existing?.expectedHours ?? (shift ? shift.hoursPerDay : null),
+        justification: req.reason || "",
+        atestado: !!(existing && existing.atestado),
+        atraso: true,
+      }];
+    }
+    const rows = [];
+    let cursor = req.dateStart, guard = 0;
+    while(cursor <= req.dateEnd && guard < 400){ rows.push(makeRow(cursor, "ferias", "")); cursor = addDays(cursor, 1); guard++; }
+    return rows;
+  }
+
+  // ---------------- estado ----------------
+  let state = {
+    view: configured ? "loading" : "unconfigured",
+    authError: "", authInfo: "",
+    session: null, profile: null,
+    tab: "inicio",
+    companies: [], shifts: [], holidays: [], employees: [], timeOffRequests: [],
+    dashboardDate: todayISO(),
+    employeeSearch: "",
+    frequencyDate: todayISO(),
+    calendarEmployeeId: "",
+    calendarMonth: todayISO().slice(0,7),
+    mapaFeriasYear: new Date().getFullYear(),
+    indicadoresMonth: todayISO().slice(0,7),
+    dssTopics: [], dssFormDate: todayISO(),
+    checklistSubTab: "modelo",
+    checklistCategories: [], checklistAreas: [], checklistEquipment: [],
+    checklistModeloCategoryId: "",
+    checklistHistory: [], checklistHistoryMonth: todayISO().slice(0,7),
+    checklistHistoryEmployeeId: "", checklistHistoryCategoryId: "",
+  };
+  let checklistHistoryLoaded = false; // recarrega o histórico sempre que a subaba é reaberta
+
+  function render(){ $("#app").innerHTML = viewHTML(); wireView(); }
+  function viewHTML(){
+    if(state.view==="unconfigured") return `<div class="card" style="margin:40px 16px"><p style="margin-top:0">App ainda não conectado ao banco compartilhado.</p></div>`;
+    if(state.view==="loading") return `<div class="spinner">Carregando…</div>`;
+    if(state.view==="auth") return authHTML();
+    if(state.view==="unauthorized") return unauthorizedHTML();
+    return appShellHTML();
+  }
+
+  // ---------------- autenticação (mesma checagem de admin do painel desktop) ----------------
+  function authHTML(){
+    return `
+      <header class="top"><div class="brand">Fertgrow Gestão</div><div class="who">Acesso restrito a administradores</div></header>
+      <main>
+        ${state.authError ? `<div class="msg err">${esc(state.authError)}</div>` : ""}
+        <div class="card">
+          <div class="field"><label>E-mail</label><input type="email" class="input" id="auth_email" autocomplete="email" /></div>
+          <div class="field"><label>Senha</label><input type="password" class="input" id="auth_password" autocomplete="current-password" /></div>
+          <button class="btn" id="auth_submit">Entrar</button>
+        </div>
+      </main>`;
+  }
+  function unauthorizedHTML(){
+    return `
+      <header class="top"><div class="brand">Fertgrow Gestão</div></header>
+      <main>
+        <div class="card">
+          <p style="margin-top:0">${esc(state.authError||"Essa conta não tem permissão de administrador.")}</p>
+          <button class="btn ghost" id="unauth_logout">Sair</button>
+        </div>
+      </main>`;
+  }
+  async function onAuthSubmit(){
+    const email = $("#auth_email").value.trim();
+    const password = $("#auth_password").value;
+    state.authError = "";
+    if(!email || !password){ state.authError = "Preencha e-mail e senha."; render(); return; }
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if(error){ state.authError = "E-mail ou senha inválidos."; render(); return; }
+    state.session = data.session;
+    await afterLogin();
+  }
+
+  // ---------------- boot / carga de dados ----------------
+  async function bootstrap(){
+    if(!configured){ state.view = "unconfigured"; render(); return; }
+    const { data: { session } } = await supabase.auth.getSession();
+    if(!session){ state.view = "auth"; render(); return; }
+    state.session = session;
+    await afterLogin();
+  }
+  async function afterLogin(){
+    state.view = "loading"; render();
+    const { data: profile } = await supabase.from("profiles").select("*").eq("id", state.session.user.id).maybeSingle();
+    state.profile = profile;
+    if(!profile || profile.role!=="admin"){
+      await supabase.auth.signOut();
+      state.view = "unauthorized";
+      state.authError = profile ? `Essa conta não tem permissão de administrador (role atual: "${profile.role}").` : "Sessão válida, mas não existe registro em \"profiles\" pra essa conta.";
+      render();
+      return;
+    }
+    await loadAllData();
+    state.view = "app"; state.tab = "inicio";
+    render();
+  }
+  async function loadAllData(){
+    const [c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11] = await Promise.all([
+      supabase.from("companies").select("*"),
+      supabase.from("shifts").select("*"),
+      supabase.from("holidays").select("*"),
+      supabase.from("employees").select("*"),
+      supabase.from("attendance").select("*"),
+      supabase.from("employee_shift_history").select("*"),
+      supabase.from("profiles").select("id, employee_id, failed_login_attempts, locked_at").not("employee_id", "is", null),
+      supabase.from("dss_topics").select("*").order("date",{ascending:false}).limit(30),
+      supabase.from("checklist_categories").select("*").order("order"),
+      supabase.from("checklist_areas").select("*").order("order"),
+      supabase.from("checklist_equipment").select("*").order("order"),
+    ]);
+    const attByEmployee = {};
+    (c5.data||[]).forEach(r => { (attByEmployee[r.employee_id] = attByEmployee[r.employee_id]||[]).push(attendanceFromRow(r)); });
+    const shiftHistByEmployee = {};
+    (c6.data||[]).forEach(r => { (shiftHistByEmployee[r.employee_id] = shiftHistByEmployee[r.employee_id]||[]).push(shiftHistoryRowToObj(r)); });
+    Object.values(shiftHistByEmployee).forEach(list => list.sort((a,b)=> a.effectiveFrom < b.effectiveFrom ? -1 : 1));
+    const profileByEmployee = {};
+    (c7.data||[]).forEach(p => { profileByEmployee[p.employee_id] = p; });
+    state.companies = (c1.data||[]).map(companyFromRow);
+    state.shifts = (c2.data||[]).map(shiftFromRow);
+    state.holidays = (c3.data||[]).map(holidayFromRow);
+    state.employees = (c4.data||[]).map(r => employeeFromRow(r, attByEmployee[r.id]||[], shiftHistByEmployee[r.id]||[], profileByEmployee[r.id]));
+    state.dssTopics = (c8.data||[]).map(dssTopicFromRow);
+    state.checklistCategories = (c9.data||[]).map(checklistCategoryFromRow);
+    state.checklistAreas = (c10.data||[]).map(checklistAreaFromRow);
+    state.checklistEquipment = (c11.data||[]).map(checklistEquipmentFromRow);
+    const { data: reqRows } = await supabase.from("time_off_requests").select("*").order("created_at",{ascending:false});
+    state.timeOffRequests = (reqRows||[]).map(timeOffRequestFromRow);
+    // Fora do Promise.all de propósito: se essa tabela ainda não existir (schema não atualizado no
+    // banco), não pode derrubar o carregamento do resto — best-effort, mantém o padrão CLT se falhar.
+    try{
+      const { data: otRow } = await supabase.from("overtime_rules").select("*").eq("id", true).maybeSingle();
+      if(otRow){ overtimeRules.normalPct = Number(otRow.normal_pct); overtimeRules.restDayPct = Number(otRow.rest_day_pct); }
+    }catch(err){ /* sem essa tabela ainda, ou sem conexão — mantém o padrão CLT */ }
+  }
+  // Histórico de checklists preenchidos — sob demanda (só quando a subaba Histórico é aberta/filtrada),
+  // não no boot. Sem o join do painel desktop (select("*, employees(name)")): o nome do funcionário já
+  // está disponível localmente em state.employees, então uma segunda ida ao banco só pra isso é
+  // desnecessária.
+  async function fetchChecklistHistory({month, employeeId, categoryId}){
+    let q = supabase.from("daily_checklists").select("*").order("date", {ascending:false});
+    if(month) q = q.gte("date", `${month}-01`).lte("date", `${month}-31`);
+    if(employeeId) q = q.eq("employee_id", employeeId);
+    if(categoryId) q = q.eq("category_id", categoryId);
+    const { data, error } = await q;
+    if(error){ alert("Não consegui carregar o histórico de checklists: "+error.message); return; }
+    state.checklistHistory = (data||[]).map(r => ({
+      id:r.id, employeeId:r.employee_id,
+      employeeName: state.employees.find(e=>e.id===r.employee_id)?.name || "—",
+      date:r.date, categoryId:r.category_id, items:r.items||[],
+    }));
+  }
+  async function refreshAllData(){ await loadAllData(); render(); }
+
+  // ---------------- notificações (mesmo padrão do painel desktop) ----------------
+  async function insertNotifications(rows){
+    if(!rows || !rows.length) return;
+    try{ await supabase.from("notifications").insert(rows); }catch(err){ console.error("Falha ao gravar notificação", err); }
+  }
+  // Falta/atraso lançados na Frequência geram um aviso de "desempenho" pro colaborador.
+  function notifyPerformanceEntries(employeeId, entries){
+    const rows = entries.filter(e=>e.status==="falta" || e.atraso).map(e => ({
+      employee_id: employeeId, type: "desempenho",
+      title: e.status==="falta" ? "Falta registrada" : "Atraso registrado",
+      body: `${e.status==="falta"?"Falta":"Atraso"} registrado em ${brDate(e.date)}${e.justification?`: ${e.justification}`:""}.`,
+    }));
+    insertNotifications(rows);
+  }
+  async function notifyRequestStatus(req){
+    try{
+      await fetch(`${SUPABASE_URL}/functions/v1/notify-request-status`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json", "Authorization": `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ employeeId: req.employeeId, type: req.type, status: req.status, dateStart: req.dateStart, dateEnd: req.dateEnd }),
+      });
+    }catch(err){ console.error("Falha ao notificar colaborador (push)", err); }
+  }
+
+  // ---------------- decisão de solicitações (mesma lógica do painel desktop, sem Kanban) ----------------
+  async function applyApprovedTimeOff(req, employee){
+    const dayCount = Math.round((new Date(req.dateEnd) - new Date(req.dateStart)) / 86400000) + 1;
+    if(dayCount > 120){ alert(`Esse intervalo tem ${dayCount} dias — grande demais pra aplicar automaticamente. Ajuste pelo painel desktop.`); return false; }
+    if(req.type==="ferias"){
+      const totalDebit = dayCount + (req.diasVendidos||0);
+      const saldo = employee.feriasSaldoDias ?? 0;
+      if(totalDebit > saldo){
+        alert(`Saldo de férias insuficiente: ${employee.name} tem ${saldo} dia(s) disponíveis, e esse pedido descontaria ${totalDebit}.`);
+        return false;
+      }
+    }
+    const rows = timeOffRequestToAttendanceRows(req, employee);
+    const { error } = await supabase.from("attendance").upsert(rows.map(r=>attendanceToRow(employee.id, r)), { onConflict:"employee_id,date" });
+    if(error){ alert("Não consegui gravar a frequência: "+error.message); return false; }
+    const byDate = new Map(rows.map(r=>[r.date, r]));
+    employee.attendance = [...(employee.attendance||[]).filter(a=>!byDate.has(a.date)), ...rows];
+    if(req.type==="ferias"){
+      employee.feriasSaldoDias = (employee.feriasSaldoDias ?? 0) - (dayCount + (req.diasVendidos||0));
+      await supabase.from("employees").update({ ferias_saldo_dias: employee.feriasSaldoDias }).eq("id", employee.id);
+    }
+    req.status = "aprovado";
+    return true;
+  }
+  async function decideRequest(reqId, status, responseText){
+    const { data: fresh, error: fetchErr } = await supabase.from("time_off_requests").select("*").eq("id", reqId).maybeSingle();
+    if(fetchErr){ alert("Não consegui confirmar o pedido: "+fetchErr.message); return; }
+    if(!fresh || fresh.status!=="pendente"){ alert("Esse pedido já não está mais pendente (decidido em outro dispositivo)."); await refreshAllData(); return; }
+    const req = timeOffRequestFromRow(fresh);
+    const employee = state.employees.find(e=>e.id===req.employeeId);
+    if(!employee){ alert("Funcionário não encontrado."); return; }
+    closeModalRoot();
+    if(req.type==="solicitacao_geral"){
+      req.status = status;
+      req.adminResponse = responseText||"";
+      req.adminRespondedAt = new Date().toISOString();
+      const { error } = await supabase.from("time_off_requests").upsert(timeOffRequestToRow(req));
+      if(error){ alert("Não consegui salvar a decisão: "+error.message); return; }
+      state.timeOffRequests = [req, ...state.timeOffRequests.filter(r=>r.id!==req.id)];
+      render();
+      insertNotifications([{ employee_id: req.employeeId, type:"solicitacao_geral", title:"Sua solicitação foi respondida", body: responseText || `Sua solicitação "${req.title||''}" foi ${status==="aprovado"?"aprovada":"rejeitada"}.` }]);
+      return;
+    }
+    if(status==="rejeitado"){
+      req.status = "rejeitado";
+      const { error } = await supabase.from("time_off_requests").upsert(timeOffRequestToRow(req));
+      if(error){ alert("Não consegui salvar a decisão: "+error.message); return; }
+    } else {
+      const ok = await applyApprovedTimeOff(req, employee);
+      if(!ok) return;
+      const { error } = await supabase.from("time_off_requests").upsert(timeOffRequestToRow(req));
+      if(error){ alert("Não consegui salvar a decisão: "+error.message); return; }
+    }
+    state.timeOffRequests = [req, ...state.timeOffRequests.filter(r=>r.id!==req.id)];
+    render();
+    notifyRequestStatus(req);
+  }
+  function closeModalRoot(){ $("#modalRoot").innerHTML = ""; }
+
+  // ---------------- reset de senha (mesma Edge Function do painel desktop) ----------------
+  async function resetEmployeePassword(employee){
+    if(!employee || !confirm(`Resetar a senha de ${employee.name}? Uma senha temporária nova vai ser gerada.`)) return;
+    try{
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/admin-reset-password`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json", "Authorization": `Bearer ${state.session.access_token}` },
+        body: JSON.stringify({ employeeId: employee.id }),
+      });
+      const result = await resp.json();
+      if(!resp.ok || result.error){ alert("Não consegui resetar a senha: "+(result.error||resp.statusText)); return; }
+      employee.lockedAt = null;
+      render();
+      alert(`Senha resetada! Senha temporária de ${employee.name}: ${result.tempPassword}\n\nAvise o colaborador (ele pode trocar depois no "🔑 Senha" do portal dele).`);
+    }catch(err){ alert("Falha de conexão ao resetar a senha: "+err.message); }
+  }
+
+  // ---------------- Início (dashboard) ----------------
+  function inicioHTML(){
+    const roster = computeDayRoster(state.dashboardDate);
+    const pending = state.timeOffRequests.filter(r=>r.status==="pendente");
+    const locked = state.employees.filter(e=>e.lockedAt);
+    return `
+      <h2 class="section">Hoje — ${brDate(state.dashboardDate)}</h2>
+      <div class="kpis" style="margin-bottom:16px">
+        <div class="card kpi"><div class="label">Presentes hoje</div><div class="value" style="color:var(--brand-light)">${roster.present.length}</div></div>
+        <div class="card kpi"><div class="label">Folga/férias hoje</div><div class="value" style="color:var(--cyan)">${roster.off.length}</div></div>
+        <div class="card kpi kpi-click" data-goto="solicitacoes"><div class="label">Solicitações pendentes</div><div class="value" style="color:${pending.length?'var(--amber)':'var(--emerald)'}">${pending.length}</div></div>
+        <div class="card kpi kpi-click" data-goto="funcionarios"><div class="label">Contas bloqueadas</div><div class="value" style="color:${locked.length?'var(--rose)':'var(--emerald)'}">${locked.length}</div></div>
+      </div>
+      ${pending.length ? `<div class="alert-banner">📋 <div><b>${pending.length} solicitação(ões)</b> aguardando decisão. <a class="link" data-goto="solicitacoes">Ver agora</a></div></div>` : ""}
+      ${locked.length ? `<div class="alert-banner">🔒 <div><b>${locked.length} colaborador(es)</b> com login bloqueado: ${locked.map(e=>esc(e.name)).join(", ")}. <a class="link" data-goto="funcionarios">Resetar</a></div></div>` : ""}
+      <h2 class="section" style="margin-top:20px">Quem deveria estar presente</h2>
+      <div class="card" style="padding:4px 16px">
+        ${roster.present.length ? roster.present.map(r => `
+          <div class="req-row" style="cursor:default">
+            <div class="d">${esc(r.employee.name)}</div>
+            <div class="sub">${r.shift?esc(r.shift.name):"—"}</div>
+            <span class="badge ${r.status==='presente'?'presente':r.status==='falta'?'falta':''}" style="margin-top:6px;display:inline-block;${!r.status?'background:rgba(251,191,36,.15);color:var(--amber);':''}">${r.status==='presente'?'Trabalhou':r.status==='falta'?'Faltou':(state.dashboardDate<todayISO()?'Sem apontamento':'Previsto')}</span>
+          </div>`).join("") : `<p class="empty">Ninguém escalado pra hoje.</p>`}
+      </div>
+    `;
+  }
+
+  // ---------------- Solicitações (lista, equivalente ao Kanban do painel) ----------------
+  function solicitacaoRowHTML(r){
+    const employee = state.employees.find(e=>e.id===r.employeeId);
+    const label = r.type==="solicitacao_geral" ? `${TIME_OFF_TYPE_LABEL[r.type]}: ${r.title||"—"}` : TIME_OFF_TYPE_LABEL[r.type];
+    const dateLabel = r.type==="solicitacao_geral" ? "" : (r.type==="ferias" ? ` — ${brDate(r.dateStart)} a ${brDate(r.dateEnd)}` : ` — ${brDate(r.dateStart)}`);
+    return `
+      <div class="req-row" data-openreq="${r.id}">
+        <div class="d">${esc(employee?employee.name:"Funcionário removido")}</div>
+        <div class="sub">${esc(label)}${dateLabel}${r.ticketNumber?` · #${r.ticketNumber}`:""}</div>
+        <span class="badge ${r.status}" style="margin-top:6px;display:inline-block">${REQUEST_STATUS_LABEL[r.status]}</span>
+      </div>`;
+  }
+  function solicitacoesHTML(){
+    const pending = state.timeOffRequests.filter(r=>r.status==="pendente");
+    const decided = state.timeOffRequests.filter(r=>r.status!=="pendente").slice(0,30);
+    return `
+      <div class="row-flex" style="justify-content:space-between;margin-bottom:14px">
+        <h2 class="section" style="margin:0">Solicitações</h2>
+        <button class="btn ghost small" id="refreshReqBtn">🔄 Atualizar</button>
+      </div>
+      <h2 class="section">Pendentes (${pending.length})</h2>
+      <div class="card" style="padding:4px 16px;margin-bottom:20px">
+        ${pending.length ? pending.map(solicitacaoRowHTML).join("") : `<p class="empty">Nenhuma pendência 🎉</p>`}
+      </div>
+      <h2 class="section">Decididas recentemente</h2>
+      <div class="card" style="padding:4px 16px">
+        ${decided.length ? decided.map(solicitacaoRowHTML).join("") : `<p class="empty">Nada por aqui ainda.</p>`}
+      </div>
+    `;
+  }
+  function openRequestDetailModal(reqId){
+    const req = state.timeOffRequests.find(r=>r.id===reqId);
+    if(!req) return;
+    const employee = state.employees.find(e=>e.id===req.employeeId);
+    const pending = req.status==="pendente";
+    const isGeneral = req.type==="solicitacao_geral";
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>${TIME_OFF_TYPE_LABEL[req.type]}${req.ticketNumber?` #${req.ticketNumber}`:""}</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          <div class="field"><label>Funcionário</label><div>${esc(employee?employee.name:"Funcionário removido")}</div></div>
+          ${isGeneral ? `<div class="field"><label>Título</label><div>${esc(req.title||"—")}</div></div>` : `<div class="field"><label>Data</label><div>${req.type==="ferias"?`${brDate(req.dateStart)} até ${brDate(req.dateEnd)}`:brDate(req.dateStart)}</div></div>`}
+          <div class="field"><label>${isGeneral?"Descrição":"Motivo"}</label><div style="white-space:pre-wrap">${esc(req.reason)||"—"}</div></div>
+          ${!pending ? `
+            <div class="field"><label>Status</label><div>${req.status==="aprovado"?"✅ Aprovado":"❌ Rejeitado"}</div></div>
+            ${req.adminResponse ? `<div class="field"><label>Sua resposta</label><div style="white-space:pre-wrap">${esc(req.adminResponse)}</div></div>` : ""}
+            ${req.colaboradorReply ? `<div class="field"><label>Resposta do colaborador</label><div style="white-space:pre-wrap">${esc(req.colaboradorReply)}</div></div>` : ""}
+          ` : isGeneral ? `<div class="field"><label>Resposta (opcional)</label><textarea class="input" id="req_response" rows="3"></textarea></div>` : ""}
+          <div class="modal-actions">
+            <button class="btn ghost" id="cancelModal" type="button">Fechar</button>
+            ${pending ? `<button class="btn ghost" id="rejectReqBtn" type="button" style="color:var(--rose);border-color:var(--rose)">❌ Rejeitar</button><button class="btn" id="approveReqBtn" type="button">✅ Aprovar</button>` : ""}
+          </div>
+        </div>
+      </div>`;
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+    if(pending){
+      $("#approveReqBtn").addEventListener("click", () => decideRequest(req.id, "aprovado", isGeneral ? $("#req_response").value.trim() : undefined));
+      $("#rejectReqBtn").addEventListener("click", () => {
+        if(!isGeneral && !confirm("Rejeitar essa solicitação? Nada muda na frequência do funcionário.")) return;
+        decideRequest(req.id, "rejeitado", isGeneral ? $("#req_response").value.trim() : undefined);
+      });
+    }
+  }
+
+  // ---------------- Funcionários (lista + ficha completa) ----------------
+  function funcionariosHTML(){
+    const locked = state.employees.filter(e=>e.lockedAt);
+    const q = (state.employeeSearch||"").trim().toLowerCase();
+    const list = state.employees
+      .filter(e => !q || e.name.toLowerCase().includes(q) || (e.cargo||"").toLowerCase().includes(q))
+      .sort((a,b)=>a.name.localeCompare(b.name));
+    return `
+      <div class="row-flex" style="justify-content:space-between;margin-bottom:14px">
+        <h2 class="section" style="margin:0">Funcionários</h2>
+        <button class="btn small" id="newEmployeeBtn" style="width:auto">+ Novo</button>
+      </div>
+      ${locked.length ? `<div class="alert-banner">🔒 <div><b>${locked.length} colaborador(es)</b> com login bloqueado.</div></div>` : ""}
+      <div class="field" style="margin-bottom:14px"><input class="input" id="employeeSearchInput" placeholder="Buscar por nome ou cargo…" value="${esc(state.employeeSearch||"")}" /></div>
+      <div class="card" style="padding:4px 16px">
+        ${list.map(e => {
+          const company = state.companies.find(c=>c.id===e.companyId);
+          return `
+          <div class="req-row" data-openemp="${e.id}">
+            <div class="d">${esc(e.name)}${e.status==="Inativo"?' <span style="color:var(--muted);font-weight:400">(inativo)</span>':''}</div>
+            <div class="sub">${esc(e.cargo||"")}${company?` · ${esc(company.name)}`:""}</div>
+            ${e.lockedAt ? `<button class="btn small" data-resetpw="${e.id}" style="margin-top:8px">🔑 Resetar senha</button>` : ""}
+          </div>`;
+        }).join("") || `<p class="empty">${q?"Nenhum funcionário encontrado.":"Nenhum funcionário cadastrado."}</p>`}
+      </div>
+    `;
+  }
+  // Ficha completa (criar/editar) — mesma lógica de troca de turno do painel desktop: se o turno padrão
+  // mudou, grava uma linha de histórico (gênese + nova, se ainda não havia histórico) e notifica o
+  // colaborador, pra shiftIdForEmployeeOnDate continuar resolvendo corretamente datas passadas.
+  function openEmployeeModal(employee){
+    const f = employee ? {...employee, rates:{...employee.rates}} : {
+      id: uid(), name:"", email:"", cargo:"", companyId: state.companies[0]?.id || "", shiftId:"", admissao: todayISO(), status:"Ativo",
+      rates: Object.fromEntries(BILLING_KEYS.map(k=>[k,0])), attendance: [], shiftHistory: [], feriasSaldoDias: 30,
+    };
+    const rateFieldsHTML = (companyId) => {
+      const company = state.companies.find(c=>c.id===companyId);
+      if(!company) return `<div style="color:var(--muted);font-size:12.5px">Selecione uma empresa pra ver os campos de custo aplicáveis.</div>`;
+      const applicable = BILLING_KEYS.filter(k => company.billing[k]);
+      if(!applicable.length) return `<div style="color:var(--muted);font-size:12.5px">Essa empresa não tem formas de cobrança configuradas.</div>`;
+      return applicable.map(k => `
+        <div class="field"><label>${BILLING_LABELS[k]} ${k==='hh'?'(R$/hora)':'(R$/mês)'}</label>
+        <input type="number" step="0.01" class="input" id="e_rate_${k}" value="${f.rates[k]||0}" /></div>`).join("");
+    };
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>${employee?"Editar funcionário":"Novo funcionário"}</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          <div class="field"><label>Nome completo</label><input class="input" id="e_name" value="${esc(f.name)}" /></div>
+          <div class="field"><label>E-mail (login do portal do colaborador)</label><input type="email" class="input" id="e_email" value="${esc(f.email||"")}" placeholder="nome@exemplo.com" /></div>
+          <div class="field"><label>Cargo / função</label><input class="input" id="e_cargo" value="${esc(f.cargo)}" /></div>
+          <div class="field"><label>Empresa</label>
+            <select class="input" id="e_company">${state.companies.map(c=>`<option value="${c.id}" ${c.id===f.companyId?'selected':''}>${esc(c.name)}</option>`).join("")}</select>
+          </div>
+          <div class="field"><label>Turno padrão</label>
+            <select class="input" id="e_shift">
+              <option value="">— não definido —</option>
+              ${state.shifts.map(s=>`<option value="${s.id}" ${s.id===f.shiftId?'selected':''}>${esc(s.name)}</option>`).join("")}
+            </select>
+          </div>
+          <div class="field"><label>Data de admissão</label><input type="date" class="input" id="e_admissao" value="${f.admissao}" /></div>
+          <div class="field"><label>Status</label>
+            <select class="input" id="e_status"><option ${f.status==='Ativo'?'selected':''}>Ativo</option><option ${f.status==='Inativo'?'selected':''}>Inativo</option></select>
+          </div>
+          <div class="field"><label>Saldo de férias (dias)</label><input type="number" class="input" id="e_ferias_saldo" value="${f.feriasSaldoDias}" /></div>
+          <div id="rateFields">${rateFieldsHTML(f.companyId)}</div>
+          <div class="modal-actions">
+            <button class="btn ghost" id="cancelModal" type="button">Cancelar</button>
+            <button class="btn" id="saveEmployee" type="button">Salvar funcionário</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+    $("#e_company").addEventListener("change", e => { $("#rateFields").innerHTML = rateFieldsHTML(e.target.value); });
+    $("#saveEmployee").addEventListener("click", async () => {
+      const companyId = $("#e_company").value;
+      const company = state.companies.find(c=>c.id===companyId);
+      const rates = {...f.rates};
+      if(company) BILLING_KEYS.filter(k=>company.billing[k]).forEach(k => { const el = $(`#e_rate_${k}`); if(el) rates[k] = Number(el.value||0); });
+      const updated = {
+        id: f.id, name: $("#e_name").value.trim() || "Sem nome", email: $("#e_email").value.trim(), cargo: $("#e_cargo").value,
+        companyId, shiftId: $("#e_shift").value, admissao: $("#e_admissao").value, status: $("#e_status").value,
+        rates, attendance: f.attendance || [], shiftHistory: f.shiftHistory || [],
+        feriasSaldoDias: Math.max(0, Number($("#e_ferias_saldo").value)||0),
+      };
+      const btn = $("#saveEmployee"); btn.disabled = true; btn.textContent = "Salvando…";
+      const { error } = await supabase.from("employees").upsert(employeeToRow(updated));
+      if(error){ alert("Não consegui salvar: "+error.message); btn.disabled = false; btn.textContent = "Salvar funcionário"; return; }
+      const exists = state.employees.some(e=>e.id===updated.id);
+      state.employees = exists ? state.employees.map(e=>e.id===updated.id?updated:e) : [...state.employees, updated];
+      close(); render();
+      // Só avisa/grava histórico numa mudança de turno de verdade — não no cadastro inicial (f.shiftId vazio).
+      if(f.shiftId && updated.shiftId && f.shiftId!==updated.shiftId){
+        const oldShift = state.shifts.find(s=>s.id===f.shiftId);
+        const newShift = state.shifts.find(s=>s.id===updated.shiftId);
+        const today = todayISO();
+        const newRows = [];
+        if(!updated.shiftHistory.length) newRows.push({ shiftId: f.shiftId, effectiveFrom: f.admissao || "2000-01-01" });
+        newRows.push({ shiftId: updated.shiftId, effectiveFrom: today });
+        updated.shiftHistory = [...updated.shiftHistory, ...newRows];
+        try{
+          await supabase.from("employee_shift_history").upsert(newRows.map(h=>shiftHistoryObjToRow(updated.id, h)), { onConflict:"employee_id,effective_from" });
+        }catch(err){ console.error("Falha ao gravar histórico de turno", err); }
+        insertNotifications([{ employee_id: updated.id, type:"turno", title:"Seu turno foi alterado", body:`Seu turno foi alterado de ${oldShift?oldShift.name:"—"} para ${newShift?newShift.name:"—"}, a partir de ${brDate(today)}.` }]);
+      }
+    });
+  }
+
+  // ---------------- Mais (menu pro resto do escopo — próximos passes) ----------------
+  function maisHTML(){
+    const items = [
+      { ic:"🕐", lbl:"Frequência", tab:"frequencia" },
+      { ic:"🔄", lbl:"Turnos", tab:"turnos" }, { ic:"📅", lbl:"Feriados", tab:"feriados" },
+      { ic:"🗓️", lbl:"Calendário", tab:"calendario" }, { ic:"🏖️", lbl:"Mapa de Férias", tab:"mapaferias" }, { ic:"📊", lbl:"Indicadores", tab:"indicadores" },
+      { ic:"✅", lbl:"Checklist", tab:"checklist" }, { ic:"🦺", lbl:"DSS", tab:"dss" }, { ic:"🏢", lbl:"Empresas", tab:"empresas" },
+    ];
+    return `
+      <h2 class="section">Mais</h2>
+      <div class="card" style="padding:4px 16px">
+        ${items.map(i=>`<div class="menu-row" ${i.tab?`data-tab="${i.tab}"`:""} style="${i.tab?"cursor:pointer":"opacity:.5"}"><div><span class="ic">${i.ic}</span>${i.lbl}</div><span class="arrow">${i.tab?"›":"—"}</span></div>`).join("")}
+      </div>
+    `;
+  }
+
+  // ---------------- Indicadores + relatório gerencial (PDF) ----------------
+  function indicadoresHTML(){
+    const month = state.indicadoresMonth;
+    const rows = state.employees.map(e => {
+      const company = state.companies.find(c=>c.id===e.companyId);
+      const m = employeeMonthStats(e, month);
+      const unjustified = employeeMonthUnjustifiedAbsences(e, month);
+      const requestsCount = state.timeOffRequests.filter(r=>r.employeeId===e.id && r.createdAt && r.createdAt.slice(0,7)===month).length;
+      const overtimeCost = employeeMonthOvertimeCost(e, company, month);
+      return { employee:e, absences:m.absences, unjustified, requestsCount, overtimeCost };
+    });
+    const totalAbsences = rows.reduce((s,r)=>s+r.absences,0);
+    const totalUnjustified = rows.reduce((s,r)=>s+r.unjustified,0);
+    const totalOvertimeCost = round2(rows.reduce((s,r)=>s+r.overtimeCost,0));
+    const rankedByAbsences = [...rows].sort((a,b)=>b.absences-a.absences).filter(r=>r.absences>0 || r.unjustified>0 || r.overtimeCost>0);
+    const companyCosts = state.companies.map(c => ({ company:c, ...companyMonthCostSummary(c, month) }));
+    return `
+      <div class="row-flex" style="justify-content:space-between;margin-bottom:14px">
+        <h2 class="section" style="margin:0">Indicadores</h2>
+        <span class="link" data-tab="mais">← Mais</span>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="field" style="margin-bottom:10px"><label>Mês de referência</label><input type="month" class="input" id="indMonth" value="${month}" /></div>
+        <button class="btn small" id="openManagementReportBtn">📄 Gerar relatório gerencial (PDF)</button>
+      </div>
+      ${!state.employees.length ? `<p class="empty">Nenhum funcionário cadastrado.</p>` : `
+      <div class="kpis" style="margin-bottom:16px">
+        <div class="card kpi"><div class="label">Faltas no mês</div><div class="value" style="color:${totalAbsences>0?'var(--rose)':'var(--emerald)'}">${totalAbsences}</div></div>
+        <div class="card kpi"><div class="label">Não justificadas</div><div class="value" style="color:${totalUnjustified>0?'var(--rose)':'var(--emerald)'}">${totalUnjustified}</div></div>
+        <div class="card kpi" style="grid-column:1/-1"><div class="label">Custo de hora extra no mês</div><div class="value" style="color:var(--amber)">${money(totalOvertimeCost)}</div></div>
+      </div>
+      <h2 class="section">Funcionários com ocorrência no mês</h2>
+      <div class="card" style="padding:4px 16px;margin-bottom:20px">
+        ${rankedByAbsences.length ? rankedByAbsences.map(r => `
+          <div class="req-row" style="cursor:default">
+            <div class="d">${esc(r.employee.name)}</div>
+            <div class="sub">${r.absences} falta(s)${r.unjustified?` · ${r.unjustified} não justificada(s)`:""}${r.requestsCount?` · ${r.requestsCount} solicitação(ões)`:""}${r.overtimeCost>0?` · ⚡${money(r.overtimeCost)} extra`:""}</div>
+          </div>`).join("") : `<p class="empty">Nenhuma ocorrência no mês 🎉</p>`}
+      </div>
+      <h2 class="section">Custo por empresa</h2>
+      <div class="card" style="padding:4px 16px">
+        ${companyCosts.map(c => `
+          <div class="req-row" style="cursor:default">
+            <div class="d">${esc(c.company.name)}</div>
+            <div class="sub">Real (até hoje): ${money(c.real)} · Estimado (mês fechado): ${money(c.estimated)}</div>
+          </div>`).join("") || `<p class="empty">Nenhuma empresa cadastrada.</p>`}
+      </div>`}
+    `;
+  }
+  // Mesma lógica de dados/PDF do painel desktop, sem alterações (cálculo puro, não depende de tela).
+  function buildManagementReportData(companyId, month){
+    const companies = companyId ? state.companies.filter(c=>c.id===companyId) : state.companies;
+    const scopeEmployees = state.employees.filter(e => !companyId || e.companyId===companyId);
+    const companyCosts = companies.map(c => ({ company:c, ...companyMonthCostSummary(c, month) }));
+    const statsByEmp = companyId ? new Map(scopeEmployees.map(e=>[e.id, employeeMonthStats(e, month)])) : null;
+    const employeeCostRows = companyId ? scopeEmployees.map(e => {
+      const company = companies.find(c=>c.id===e.companyId);
+      const m = statsByEmp.get(e.id);
+      return { employee:e, real: employeeMonthRealCost(e, company, month), estimated: employeeMonthEstimatedCost(e, company, month), hours:m.hours, overtimeHours:m.overtimeHours };
+    }) : [];
+    const employeeFreqRows = companyId ? scopeEmployees.map(e => {
+      const m = statsByEmp.get(e.id);
+      return { employee:e, ...m, unjustified: employeeMonthUnjustifiedAbsences(e, month) };
+    }) : [];
+    const companyFreqRows = companyId ? [] : companies.map(c => {
+      const emps = state.employees.filter(e=>e.companyId===c.id);
+      const totals = emps.reduce((acc,e) => { const m=employeeMonthStats(e,month); acc.workedDays+=m.workedDays; acc.absences+=m.absences; acc.folgas+=m.folgas; acc.ferias+=m.ferias; acc.unjustified+=employeeMonthUnjustifiedAbsences(e,month); return acc; }, {workedDays:0,absences:0,folgas:0,ferias:0,unjustified:0});
+      return { company:c, ...totals };
+    });
+    const streakAlerts = scopeEmployees.map(e=>({ employee:e, streak:computeStreak(e) })).filter(x=>x.streak>=7);
+    const unjustifiedAlerts = scopeEmployees.map(e=>({ employee:e, count:employeeMonthUnjustifiedAbsences(e, month) })).filter(x=>x.count>=3);
+    const overtimeEmployeeRows = companyId ? scopeEmployees.map(e => {
+      const company = companies.find(c=>c.id===e.companyId);
+      return { employee:e, cost: employeeMonthOvertimeCost(e, company, month) };
+    }).filter(x=>x.cost>0) : [];
+    const overtimeCompanyRows = companyId ? [] : companies.map(c => {
+      const emps = state.employees.filter(e=>e.companyId===c.id);
+      const total = round2(emps.reduce((s,e)=>s+employeeMonthOvertimeCost(e, c, month), 0));
+      return { company:c, total };
+    }).filter(x=>x.total>0);
+    const totalOvertimeCost = round2((companyId ? overtimeEmployeeRows.map(r=>r.cost) : overtimeCompanyRows.map(r=>r.total)).reduce((s,v)=>s+v,0));
+    const monthStart = `${month}-01`;
+    const [yy,mm] = month.split("-").map(Number);
+    const monthEnd = `${month}-${String(new Date(yy,mm,0).getDate()).padStart(2,"0")}`;
+    const feriasRows = scopeEmployees.flatMap(e => state.timeOffRequests
+      .filter(r=>r.employeeId===e.id && r.type==="ferias" && r.status==="aprovado" && r.dateStart<=monthEnd && r.dateEnd>=monthStart)
+      .map(r => ({ employee:e, request:r })));
+    return {
+      companyId, month, monthLabel: monthRangeLabel(month), generatedAt: new Date(),
+      scopeLabel: companyId ? (companies[0]?.name || "—") : "Todas as empresas",
+      companyCosts, employeeCostRows, employeeFreqRows, companyFreqRows,
+      streakAlerts, unjustifiedAlerts, overtimeEmployeeRows, overtimeCompanyRows, totalOvertimeCost,
+      feriasRows,
+    };
+  }
+  function generateManagementReportPDF(data){
+    const doc = new jspdf.jsPDF();
+    const BRAND = [11,107,51], BRANDLIGHT = [230,242,222];
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = 18;
+    doc.setFillColor(...BRAND); doc.rect(0,0,pageWidth,24,"F");
+    doc.setTextColor(255,255,255); doc.setFontSize(15); doc.setFont(undefined,"bold");
+    doc.text("Fertgrow — Relatório Gerencial de Mão de Obra", 14, 15);
+    doc.setFontSize(9); doc.setFont(undefined,"normal");
+    doc.text(`${data.scopeLabel} · Referência: ${data.monthLabel} · Emitido em ${data.generatedAt.toLocaleString("pt-BR")}`, 14, 21);
+    doc.setTextColor(0,0,0);
+    y = 32;
+    const sectionTitle = (title) => {
+      if(y > 270){ doc.addPage(); y = 16; }
+      doc.setFillColor(...BRAND); doc.rect(14, y-5.5, pageWidth-28, 7, "F");
+      doc.setTextColor(255,255,255); doc.setFontSize(11); doc.setFont(undefined,"bold");
+      doc.text(title, 16, y);
+      doc.setTextColor(0,0,0); doc.setFont(undefined,"normal");
+      y += 6;
+    };
+    const table = (head, body) => {
+      doc.autoTable({ head:[head], body, startY:y, margin:{left:14,right:14}, styles:{fontSize:8.5, textColor:[0,0,0], lineColor:[0,0,0], lineWidth:0.1}, headStyles:{fillColor:BRAND, textColor:255}, alternateRowStyles:{fillColor:BRANDLIGHT} });
+      y = doc.lastAutoTable.finalY + 8;
+    };
+    sectionTitle("Resumo de custos");
+    table(["Empresa","Custo real (até hoje)","Custo estimado (mês fechado)"], data.companyCosts.map(c=>[c.company.name, money(c.real), money(c.estimated)]));
+    if(data.employeeCostRows.length){
+      table(["Funcionário","Custo real","Custo estimado","Horas normais","Horas extras"], data.employeeCostRows.map(r=>[r.employee.name, money(r.real), money(r.estimated), String(r.hours), String(r.overtimeHours)]));
+    }
+    sectionTitle("Frequência e faltas");
+    if(data.employeeFreqRows.length){
+      table(["Funcionário","Dias trabalhados","Faltas","Não justificadas","Folgas","Férias no mês"], data.employeeFreqRows.map(r=>[r.employee.name, String(r.workedDays), String(r.absences), String(r.unjustified), String(r.folgas), String(r.ferias)]));
+    } else {
+      table(["Empresa","Dias trabalhados","Faltas","Não justificadas","Folgas","Férias no mês"], data.companyFreqRows.map(r=>[r.company.name, String(r.workedDays), String(r.absences), String(r.unjustified), String(r.folgas), String(r.ferias)]));
+    }
+    sectionTitle("Alertas");
+    if(!data.streakAlerts.length && !data.unjustifiedAlerts.length){
+      doc.setFontSize(9.5); doc.text("Nenhum alerta no período.", 14, y); y += 8;
+    } else {
+      if(data.streakAlerts.length) table(["Funcionário sem folga há 7+ dias","Dias consecutivos"], data.streakAlerts.map(r=>[r.employee.name, String(r.streak)]));
+      if(data.unjustifiedAlerts.length) table(["Funcionário com 3+ faltas não justificadas","Faltas não justificadas no mês"], data.unjustifiedAlerts.map(r=>[r.employee.name, String(r.count)]));
+    }
+    sectionTitle("Horas extras");
+    if(data.employeeCostRows.length || data.overtimeEmployeeRows.length){
+      table(["Funcionário","Custo de hora extra no mês"], data.overtimeEmployeeRows.map(r=>[r.employee.name, money(r.cost)]));
+    } else {
+      table(["Empresa","Custo de hora extra no mês"], data.overtimeCompanyRows.map(r=>[r.company.name, money(r.total)]));
+    }
+    doc.setFontSize(9.5); doc.setFont(undefined,"bold"); doc.text(`Total: ${money(data.totalOvertimeCost)}`, 14, y); doc.setFont(undefined,"normal"); y += 8;
+    sectionTitle("Férias");
+    if(!data.feriasRows.length){
+      doc.setFontSize(9.5); doc.text("Nenhuma férias aprovada sobrepondo o período.", 14, y); y += 8;
+    } else {
+      table(["Funcionário","Período","Dias vendidos","Saldo atual"], data.feriasRows.map(r=>[r.employee.name, `${brDate(r.request.dateStart)} a ${brDate(r.request.dateEnd)}`, String(r.request.diasVendidos||0), String(r.employee.feriasSaldoDias??0)]));
+    }
+    const safeName = (data.scopeLabel||"todas").replace(/[^a-zA-Z0-9]+/g,"-").toLowerCase();
+    doc.save(`relatorio-gerencial-${safeName}-${data.month}.pdf`);
+  }
+  function openManagementReportModal(){
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>Gerar relatório gerencial</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          <div class="field"><label>Empresa</label>
+            <select class="input" id="mr_company"><option value="">Todas as empresas</option>${state.companies.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select>
+          </div>
+          <div class="field"><label>Mês de referência</label><input type="month" class="input" id="mr_month" value="${state.indicadoresMonth}" /></div>
+          <p style="font-size:11.5px;color:var(--muted);margin:0">Gera um PDF com custos, frequência, alertas, horas extras e férias do período.</p>
+          <div class="modal-actions">
+            <button class="btn ghost" id="cancelModal" type="button">Cancelar</button>
+            <button class="btn" id="mr_genBtn" type="button">📄 Gerar PDF</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+    $("#mr_genBtn").addEventListener("click", () => {
+      const data = buildManagementReportData($("#mr_company").value, $("#mr_month").value || state.indicadoresMonth);
+      generateManagementReportPDF(data);
+      close();
+    });
+  }
+
+  // ---------------- DSS (Diálogo de Segurança) ----------------
+  function dssAdminHTML(){
+    const editing = state.dssTopics.find(t=>t.date===state.dssFormDate) || null;
+    const sorted = [...state.dssTopics].sort((a,b)=> a.date < b.date ? 1 : -1);
+    return `
+      <h2 class="section">DSS</h2>
+      <span class="link" data-tab="mais">← Mais</span>
+      <div class="card" style="margin:14px 0">
+        <div class="field"><label>Data</label><input type="date" class="input" id="dss_date" value="${state.dssFormDate}" /></div>
+        <div class="field"><label>Título do tema</label><input class="input" id="dss_title" value="${editing?esc(editing.title):""}" placeholder="Ex: Uso correto de EPI" /></div>
+        <div class="field"><label>Descrição/conteúdo</label><textarea class="input" id="dss_description" rows="4" placeholder="Conteúdo do DSS de hoje...">${editing?esc(editing.description):""}</textarea></div>
+        <button class="btn small" id="dss_saveBtn">💾 Salvar tema${editing?" (atualizar)":""}</button>
+        <p style="font-size:11px;color:var(--muted);margin:8px 0 0">Um tema NOVO (data sem tema ainda) notifica todos os colaboradores ativos.</p>
+      </div>
+      <h2 class="section">Últimos temas</h2>
+      <div class="card" style="padding:4px 16px">
+        ${sorted.length ? sorted.map(t => `
+          <div class="req-row" data-dsstopic="${t.date}">
+            <div class="d">${brDate(t.date)} — ${esc(t.title)}</div>
+            ${t.description ? `<div class="sub">${esc(t.description.slice(0,100))}${t.description.length>100?"…":""}</div>` : ""}
+          </div>`).join("") : `<p class="empty">Nenhum tema cadastrado ainda.</p>`}
+      </div>
+    `;
+  }
+
+  // ---------------- Checklist (admin: modelo + histórico) ----------------
+  function checklistAdminHTML(){
+    return `
+      <div class="row-flex" style="justify-content:space-between;margin-bottom:10px">
+        <h2 class="section" style="margin:0">Checklist</h2>
+        <span class="link" data-tab="mais">← Mais</span>
+      </div>
+      <div class="tabs2">
+        <div class="t ${state.checklistSubTab==='modelo'?'active':''}" data-checklistsub="modelo">Modelo</div>
+        <div class="t ${state.checklistSubTab==='historico'?'active':''}" data-checklistsub="historico">Histórico</div>
+      </div>
+      ${state.checklistSubTab==="historico" ? checklistHistoricoHTML() : checklistModeloHTML()}
+    `;
+  }
+  function checklistModeloHTML(){
+    const categories = [...state.checklistCategories].sort((a,b)=>a.order-b.order);
+    if(!state.checklistModeloCategoryId || !categories.some(c=>c.id===state.checklistModeloCategoryId)){
+      state.checklistModeloCategoryId = categories[0]?.id || "";
+    }
+    const categoryId = state.checklistModeloCategoryId;
+    const areas = state.checklistAreas.filter(a=>a.categoryId===categoryId).sort((a,b)=>a.order-b.order);
+    return `
+      <div class="tabs2" style="overflow-x:auto">
+        ${categories.map(c=>`<div class="t ${c.id===categoryId?'active':''}" data-checklistcat="${c.id}">${esc(c.name)}</div>`).join("") || `<span style="font-size:12px;color:var(--muted);padding:8px 4px">Nenhuma categoria ainda</span>`}
+      </div>
+      <div class="row-flex" style="margin-bottom:14px">
+        <button class="btn ghost small" id="newChecklistCategoryBtn" style="width:auto">+ Nova categoria</button>
+        ${categoryId ? `<button class="btn ghost small" id="editChecklistCategoryBtn" style="width:auto">✎ Editar</button><button class="btn ghost small" id="delChecklistCategoryBtn" style="width:auto;color:var(--rose)">🗑</button>` : ""}
+      </div>
+      ${!categories.length ? `<p class="empty">Nenhuma categoria cadastrada. Categorias livres (ex: "Checklist Mecânica") cada uma com sua árvore de área/equipamento.</p>` : `
+      <div class="row-flex" style="justify-content:space-between;margin-bottom:10px">
+        <span style="font-size:11.5px;color:var(--muted)">Áreas e equipamentos que os colaboradores inspecionam</span>
+        <button class="btn small" id="newChecklistAreaBtn" style="width:auto">+ Área</button>
+      </div>
+      ${!areas.length ? `<p class="empty">Nenhuma área cadastrada. Cadastre a primeira (ex: "PLANTA 01").</p>` : areas.map(a => {
+        const equip = state.checklistEquipment.filter(e=>e.areaId===a.id).sort((x,y)=>x.order-y.order);
+        return `
+        <div class="card" style="margin-bottom:12px">
+          <div class="row-flex" style="justify-content:space-between">
+            <strong style="font-size:14px">${esc(a.name)}</strong>
+            <div class="row-flex" style="gap:4px">
+              <button class="btn ghost small" data-editarea="${a.id}" style="width:auto">✎</button>
+              <button class="btn ghost small" data-delarea="${a.id}" style="width:auto;color:var(--rose)">🗑</button>
+            </div>
+          </div>
+          <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+            ${equip.map(e=>`
+              <div class="row-flex" style="justify-content:space-between;padding:6px 10px;background:var(--surface2);border-radius:8px">
+                <span style="font-size:13px">${esc(e.name)}</span>
+                <div class="row-flex" style="gap:4px">
+                  <button class="btn ghost small" data-editequip="${e.id}" style="width:auto">✎</button>
+                  <button class="btn ghost small" data-delequip="${e.id}" style="width:auto;color:var(--rose)">🗑</button>
+                </div>
+              </div>`).join("") || `<p class="empty" style="padding:8px">Nenhum equipamento nessa área ainda.</p>`}
+          </div>
+          <button class="btn ghost small" style="margin-top:10px;width:auto" data-newequip="${a.id}">+ Equipamento</button>
+        </div>`;
+      }).join("")}`}
+    `;
+  }
+  function checklistHistoricoHTML(){
+    return `
+      <div class="card" style="margin:14px 0">
+        <div class="field" style="margin-bottom:10px"><label>Mês</label><input type="month" class="input" id="checklistHistMonth" value="${state.checklistHistoryMonth}" /></div>
+        <div class="field" style="margin-bottom:10px"><label>Funcionário</label>
+          <select class="input" id="checklistHistEmployee"><option value="">Todos</option>${state.employees.map(e=>`<option value="${e.id}" ${e.id===state.checklistHistoryEmployeeId?'selected':''}>${esc(e.name)}</option>`).join("")}</select>
+        </div>
+        <div class="field" style="margin-bottom:0"><label>Categoria</label>
+          <select class="input" id="checklistHistCategory"><option value="">Todas</option>${state.checklistCategories.map(c=>`<option value="${c.id}" ${c.id===state.checklistHistoryCategoryId?'selected':''}>${esc(c.name)}</option>`).join("")}</select>
+        </div>
+      </div>
+      ${!state.checklistHistory.length ? `<p class="empty">Nenhum checklist encontrado. Ajuste o filtro acima.</p>` : `
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${state.checklistHistory.map(h => {
+          const counts = {};
+          (h.items||[]).forEach(it=>{ counts[it.status||"—"] = (counts[it.status||"—"]||0)+1; });
+          const summary = Object.entries(counts).map(([s,n])=>`${s} ${n}`).join("  ") || "sem itens";
+          return `
+          <div class="card" data-histentry="${h.id}" style="cursor:pointer">
+            <div class="row-flex" style="justify-content:space-between">
+              <div><b style="font-size:13px">${esc(h.employeeName)}</b> <span style="color:var(--muted);font-size:11.5px">${brDate(h.date)}</span></div>
+            </div>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:4px">${esc(summary)}</div>
+            <div data-histdetail="${h.id}" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+              ${(h.items||[]).map(it=>`
+                <div style="font-size:12px;padding:4px 0">${esc(it.status||"—")} <b>${esc(it.equipment_name||it.equipmentName||"")}</b>${it.area_name||it.areaName?` <span style="color:var(--muted)">(${esc(it.area_name||it.areaName)})</span>`:""}
+                  ${it.obs?`<div style="color:var(--muted)">Obs: ${esc(it.obs)}</div>`:""}
+                  ${it.pendencia?`<div style="color:var(--amber)">Pendência: ${esc(it.pendencia)}</div>`:""}
+                  ${it.acao?`<div style="color:var(--muted)">Ação: ${esc(it.acao)}</div>`:""}
+                </div>`).join("")}
+            </div>
+          </div>`;
+        }).join("")}
+      </div>`}
+    `;
+  }
+  function openChecklistCategoryModal(category){
+    const f = category ? {...category} : { id: uid(), name:"", order: state.checklistCategories.length };
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>${category?"Editar categoria":"Nova categoria"}</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          <div class="field"><label>Nome</label><input class="input" id="cc_name" value="${esc(f.name)}" placeholder="Ex: Checklist Mecânica" /></div>
+          <div class="field"><label>Ordem</label><input type="number" class="input" id="cc_order" value="${f.order}" /></div>
+          <div class="modal-actions">
+            <button class="btn ghost" id="cancelModal" type="button">Cancelar</button>
+            <button class="btn" id="saveCategory" type="button">Salvar categoria</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+    $("#saveCategory").addEventListener("click", async () => {
+      const updated = { id: f.id, name: $("#cc_name").value.trim() || "Sem nome", order: Number($("#cc_order").value)||0 };
+      const btn = $("#saveCategory"); btn.disabled = true; btn.textContent = "Salvando…";
+      const { error } = await supabase.from("checklist_categories").upsert(checklistCategoryToRow(updated));
+      if(error){ alert("Não consegui salvar: "+error.message); btn.disabled = false; btn.textContent = "Salvar categoria"; return; }
+      const exists = state.checklistCategories.some(c=>c.id===updated.id);
+      state.checklistCategories = exists ? state.checklistCategories.map(c=>c.id===updated.id?updated:c) : [...state.checklistCategories, updated];
+      if(!exists) state.checklistModeloCategoryId = updated.id;
+      close(); render();
+    });
+  }
+  function openChecklistAreaModal(area, categoryId){
+    const f = area ? {...area} : { id: uid(), categoryId, name:"", order: state.checklistAreas.filter(a=>a.categoryId===categoryId).length };
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>${area?"Editar área":"Nova área"}</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          <div class="field"><label>Nome</label><input class="input" id="ca_name" value="${esc(f.name)}" placeholder="Ex: PLANTA 01" /></div>
+          <div class="field"><label>Ordem</label><input type="number" class="input" id="ca_order" value="${f.order}" /></div>
+          <div class="modal-actions">
+            <button class="btn ghost" id="cancelModal" type="button">Cancelar</button>
+            <button class="btn" id="saveArea" type="button">Salvar área</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+    $("#saveArea").addEventListener("click", async () => {
+      const updated = { id: f.id, categoryId: f.categoryId, name: $("#ca_name").value.trim() || "Sem nome", order: Number($("#ca_order").value)||0 };
+      const { error } = await supabase.from("checklist_areas").upsert(checklistAreaToRow(updated));
+      if(error){ alert("Não consegui salvar: "+error.message); return; }
+      const exists = state.checklistAreas.some(a=>a.id===updated.id);
+      state.checklistAreas = exists ? state.checklistAreas.map(a=>a.id===updated.id?updated:a) : [...state.checklistAreas, updated];
+      close(); render();
+    });
+  }
+  function openChecklistEquipmentModal(equipment, areaId){
+    const f = equipment ? {...equipment} : { id: uid(), areaId, name:"", order: state.checklistEquipment.filter(e=>e.areaId===areaId).length };
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>${equipment?"Editar equipamento":"Novo equipamento"}</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          <div class="field"><label>Nome</label><input class="input" id="ce_name" value="${esc(f.name)}" placeholder="Ex: ELEVADOR 01" /></div>
+          <div class="field"><label>Ordem</label><input type="number" class="input" id="ce_order" value="${f.order}" /></div>
+          <div class="modal-actions">
+            <button class="btn ghost" id="cancelModal" type="button">Cancelar</button>
+            <button class="btn" id="saveEquip" type="button">Salvar equipamento</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+    $("#saveEquip").addEventListener("click", async () => {
+      const updated = { id: f.id, areaId: f.areaId, name: $("#ce_name").value.trim() || "Sem nome", order: Number($("#ce_order").value)||0 };
+      const { error } = await supabase.from("checklist_equipment").upsert(checklistEquipmentToRow(updated));
+      if(error){ alert("Não consegui salvar: "+error.message); return; }
+      const exists = state.checklistEquipment.some(e=>e.id===updated.id);
+      state.checklistEquipment = exists ? state.checklistEquipment.map(e=>e.id===updated.id?updated:e) : [...state.checklistEquipment, updated];
+      close(); render();
+    });
+  }
+
+  // ---------------- Turnos ----------------
+  function turnosHTML(){
+    return `
+      <div class="row-flex" style="justify-content:space-between;margin-bottom:14px">
+        <h2 class="section" style="margin:0">Turnos</h2>
+        <button class="btn small" id="newShiftBtn" style="width:auto">+ Novo</button>
+      </div>
+      <span class="link" data-tab="mais">← Mais</span>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+        ${state.shifts.map(s => {
+          const count = state.employees.filter(e=>e.shiftId===s.id).length;
+          return `
+          <div class="card" data-editshift="${s.id}" style="cursor:pointer">
+            <div style="font-weight:700;font-size:14.5px">${esc(s.name)}</div>
+            <div style="font-size:12px;color:var(--muted);margin:6px 0 4px">${esc(s.startTime)} — ${esc(s.endTime)} (${s.breakMinutes||0}min intervalo) · ${s.hoursPerDay}h efetivas/dia</div>
+            <div style="font-size:12px;color:var(--muted)">${s.mode==='semanal' ? `Semanal: ${(s.weekdays||[]).map(d=>WEEKDAY_LABELS[d]).join(", ")||"nenhum dia"}` : `Escala ${s.cycleWork}x${s.cycleRest} (a partir de ${brDate(s.cycleAnchor)})`}</div>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:8px">${count} funcionário(s) neste turno</div>
+          </div>`;
+        }).join("") || `<p class="empty">Nenhum turno cadastrado.</p>`}
+      </div>
+    `;
+  }
+  function openWorkShiftModal(shift){
+    const f = shift ? {...shift, weekdays:[...(shift.weekdays||[])]} : {
+      id: uid(), name:"", startTime:"08:00", endTime:"17:00",
+      breakMinutes: cltSuggestedBreakMinutes(shiftRawDurationHours("08:00","17:00")), hoursPerDay:8, weeklyHours:44, mode:"semanal",
+      weekdays:[1,2,3,4,5], cycleWork:6, cycleRest:1, cycleAnchor: todayISO(),
+    };
+    const renderModeFields = () => f.mode==="semanal" ? `
+      <div class="field">
+        <label>Dias da semana trabalhados</label>
+        <div class="row-flex" style="flex-wrap:wrap;gap:8px">
+          ${WEEKDAY_LABELS_LONG.map((w,i)=>`<label style="display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:12.5px"><input type="checkbox" data-weekday="${i}" ${f.weekdays.includes(i)?'checked':''} style="width:auto"/> ${w}</label>`).join("")}
+        </div>
+      </div>
+    ` : `
+      <div class="field"><label>Dias trabalhados seguidos</label><input type="number" min="1" class="input" id="s_cyclework" value="${f.cycleWork}" /></div>
+      <div class="field"><label>Dias de folga seguidos</label><input type="number" min="1" class="input" id="s_cyclerest" value="${f.cycleRest}" /></div>
+      <div class="field"><label>Data de referência (1º dia de trabalho de um ciclo)</label><input type="date" class="input" id="s_anchor" value="${f.cycleAnchor}" /></div>
+    `;
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>${shift?"Editar turno":"Novo turno"}</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          <div class="field"><label>Nome do turno</label><input class="input" id="s_name" value="${esc(f.name)}" placeholder="Ex: Turno 6x1 diurno" /></div>
+          <div class="field"><label>Início</label><input type="time" class="input" id="s_start" value="${f.startTime}" /></div>
+          <div class="field"><label>Término</label><input type="time" class="input" id="s_end" value="${f.endTime}" /></div>
+          <div class="field"><label>Intervalo (min)</label><input type="number" step="5" min="0" class="input" id="s_break" value="${f.breakMinutes}" /></div>
+          <div class="field"><label>Horas efetivas/dia</label><div class="input" id="s_hoursInfo" style="background:transparent;border-style:dashed;color:var(--brand-light);font-weight:700">${f.hoursPerDay}h</div></div>
+          <div class="field"><label>Padrão de jornada</label>
+            <select class="input" id="s_mode">
+              <option value="semanal" ${f.mode==='semanal'?'selected':''}>Semanal fixo</option>
+              <option value="escala" ${f.mode==='escala'?'selected':''}>Escala rotativa (6x1, 12x36...)</option>
+            </select>
+          </div>
+          <div class="field"><label>Jornada semanal contratual (CLT)</label><input type="number" step="1" min="1" max="44" class="input" id="s_weeklyhours" value="${f.weeklyHours||44}" /></div>
+          <div id="shiftModeFields">${renderModeFields()}</div>
+          <div class="modal-actions">
+            <button class="btn ghost" id="cancelModal" type="button">Cancelar</button>
+            <button class="btn" id="saveShift" type="button">Salvar turno</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+    function wireModeFields(){
+      document.querySelectorAll("[data-weekday]").forEach(el => el.addEventListener("change", () => {
+        const day = Number(el.dataset.weekday);
+        if(el.checked){ if(!f.weekdays.includes(day)) f.weekdays.push(day); }
+        else f.weekdays = f.weekdays.filter(d=>d!==day);
+      }));
+    }
+    $("#s_mode").addEventListener("change", e => { f.mode = e.target.value; $("#shiftModeFields").innerHTML = renderModeFields(); wireModeFields(); });
+    const refreshWorkedHours = () => {
+      const worked = shiftWorkedHours($("#s_start").value, $("#s_end").value, $("#s_break").value);
+      $("#s_hoursInfo").textContent = `${Math.round(worked*100)/100}h`;
+    };
+    $("#s_start").addEventListener("input", () => { $("#s_break").value = cltSuggestedBreakMinutes(shiftRawDurationHours($("#s_start").value, $("#s_end").value)); refreshWorkedHours(); });
+    $("#s_end").addEventListener("input", () => { $("#s_break").value = cltSuggestedBreakMinutes(shiftRawDurationHours($("#s_start").value, $("#s_end").value)); refreshWorkedHours(); });
+    $("#s_break").addEventListener("input", refreshWorkedHours);
+    wireModeFields();
+    $("#saveShift").addEventListener("click", async () => {
+      const breakMinutes = Number($("#s_break").value||0);
+      const updated = {
+        id: f.id, name: $("#s_name").value.trim() || "Sem nome",
+        startTime: $("#s_start").value, endTime: $("#s_end").value, breakMinutes,
+        hoursPerDay: Math.round(shiftWorkedHours($("#s_start").value, $("#s_end").value, breakMinutes)*100)/100,
+        weeklyHours: Math.min(44, Math.max(1, Number($("#s_weeklyhours").value||44))),
+        mode: $("#s_mode").value, weekdays: f.weekdays,
+        cycleWork: Number($("#s_cyclework")?.value || f.cycleWork || 1),
+        cycleRest: Number($("#s_cyclerest")?.value || f.cycleRest || 1),
+        cycleAnchor: $("#s_anchor")?.value || f.cycleAnchor || todayISO(),
+      };
+      const btn = $("#saveShift"); btn.disabled = true; btn.textContent = "Salvando…";
+      const { error } = await supabase.from("shifts").upsert(shiftToRow(updated));
+      if(error){ alert("Não consegui salvar: "+error.message); btn.disabled = false; btn.textContent = "Salvar turno"; return; }
+      const exists = state.shifts.some(s=>s.id===updated.id);
+      state.shifts = exists ? state.shifts.map(s=>s.id===updated.id?updated:s) : [...state.shifts, updated];
+      close(); render();
+    });
+  }
+
+  // ---------------- Feriados ----------------
+  function feriadosHTML(){
+    const sorted = [...state.holidays].sort((a,b) => a.date < b.date ? -1 : 1);
+    return `
+      <div class="row-flex" style="justify-content:space-between;margin-bottom:14px">
+        <h2 class="section" style="margin:0">Feriados</h2>
+        <button class="btn small" id="newHolidayBtn" style="width:auto">+ Novo</button>
+      </div>
+      <span class="link" data-tab="mais">← Mais</span>
+      <div class="card" style="padding:4px 16px;margin-top:14px">
+        ${sorted.map(h => `
+          <div class="req-row" data-editholiday="${h.id}">
+            <div class="d">${esc(h.name)}</div>
+            <div class="sub">${brDate(h.date)}${h.recurring?' · repete todo ano':''}</div>
+          </div>`).join("") || `<p class="empty">Nenhum feriado cadastrado.</p>`}
+      </div>
+    `;
+  }
+  function openHolidayModal(holiday){
+    const f = holiday ? {...holiday} : { id: uid(), date: todayISO(), name:"", recurring:true };
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>${holiday?"Editar feriado":"Novo feriado"}</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          <div class="field"><label>Data</label><input type="date" class="input" id="h_date" value="${f.date}" /></div>
+          <div class="field"><label>Nome</label><input class="input" id="h_name" value="${esc(f.name)}" placeholder="Ex: Aniversário da cidade" /></div>
+          <div class="field" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="h_recurring" ${f.recurring?'checked':''} style="width:auto" /><label style="margin:0">Repete todo ano (mesmo dia/mês)</label></div>
+          <div class="modal-actions">
+            <button class="btn ghost" id="cancelModal" type="button">Cancelar</button>
+            <button class="btn" id="saveHoliday" type="button">Salvar feriado</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+    $("#saveHoliday").addEventListener("click", async () => {
+      const updated = { id: f.id, date: $("#h_date").value, name: $("#h_name").value.trim() || "Feriado", recurring: $("#h_recurring").checked };
+      const btn = $("#saveHoliday"); btn.disabled = true; btn.textContent = "Salvando…";
+      const { error } = await supabase.from("holidays").upsert(holidayToRow(updated));
+      if(error){ alert("Não consegui salvar: "+error.message); btn.disabled = false; btn.textContent = "Salvar feriado"; return; }
+      const exists = state.holidays.some(h=>h.id===updated.id);
+      state.holidays = exists ? state.holidays.map(h=>h.id===updated.id?updated:h) : [...state.holidays, updated];
+      close(); render();
+    });
+  }
+
+  // ---------------- Empresas ----------------
+  function empresasHTML(){
+    return `
+      <div class="row-flex" style="justify-content:space-between;margin-bottom:14px">
+        <h2 class="section" style="margin:0">Empresas</h2>
+        <button class="btn small" id="newCompanyBtn" style="width:auto">+ Nova</button>
+      </div>
+      <span class="link" data-tab="mais">← Mais</span>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+        ${state.companies.map(c => `
+          <div class="card" data-editcompany="${c.id}" style="cursor:pointer">
+            <div style="font-weight:700;font-size:14.5px">${esc(c.name)}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+              ${BILLING_KEYS.filter(k=>c.billing[k]).map(k=>`<span class="badge presente">${BILLING_LABELS[k]}</span>`).join("") || `<span style="color:var(--muted);font-size:12px">Sem forma de cobrança configurada</span>`}
+            </div>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:8px">${(c.roleRates||[]).length} função(ões) com custo cadastrado · ${state.employees.filter(e=>e.companyId===c.id).length} funcionário(s)</div>
+          </div>`).join("") || `<p class="empty">Nenhuma empresa cadastrada.</p>`}
+      </div>
+    `;
+  }
+  function openCompanyModal(company){
+    const f = company
+      ? {...company, billing:{...company.billing}, roleRates:(company.roleRates||[]).map(r=>({...r, rates:{...r.rates}}))}
+      : { id: uid(), name:"", billing: Object.fromEntries(BILLING_KEYS.map(k=>[k,false])), roleRates:[] };
+    const checkedBillingKeys = () => BILLING_KEYS.filter(k => $(`#c_bill_${k}`)?.checked);
+    function roleRateRowHTML(role){
+      const applicable = checkedBillingKeys();
+      return `
+        <div class="card" data-rolerow="${role.id}" style="margin-bottom:10px;background:var(--surface2)">
+          <div class="row-flex" style="justify-content:space-between;margin-bottom:8px">
+            <input class="input" data-rolecargo="${role.id}" value="${esc(role.cargo)}" placeholder="Ex: Soldador" />
+            <button class="btn ghost small" data-rmrole="${role.id}" style="width:auto">🗑</button>
+          </div>
+          ${!applicable.length ? `<div style="color:var(--muted);font-size:12px">Marque uma forma de cobrança acima pra definir valores.</div>` : applicable.map(k => `
+            <div class="field"><label>${BILLING_LABELS[k]} ${k==='hh'?'(R$/h)':'(R$/mês)'}</label><input type="number" step="0.01" class="input" data-rolerate="${role.id}:${k}" value="${role.rates[k]||0}" /></div>`).join("")}
+        </div>`;
+    }
+    function renderRoleRates(){
+      $("#companyRoleRates").innerHTML = f.roleRates.length ? f.roleRates.map(roleRateRowHTML).join("") : `<div style="color:var(--muted);font-size:12.5px">Nenhuma função cadastrada ainda.</div>`;
+      wireRoleRates();
+    }
+    function wireRoleRates(){
+      document.querySelectorAll("[data-rmrole]").forEach(el => el.addEventListener("click", () => { f.roleRates = f.roleRates.filter(r=>r.id!==el.dataset.rmrole); renderRoleRates(); }));
+      document.querySelectorAll("[data-rolecargo]").forEach(el => el.addEventListener("input", () => { const role = f.roleRates.find(r=>r.id===el.dataset.rolecargo); if(role) role.cargo = el.value; }));
+      document.querySelectorAll("[data-rolerate]").forEach(el => el.addEventListener("input", () => { const [id,key] = el.dataset.rolerate.split(":"); const role = f.roleRates.find(r=>r.id===id); if(role) role.rates[key] = Number(el.value||0); }));
+    }
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>${company?"Editar empresa":"Nova empresa"}</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          <div class="field"><label>Nome da empresa</label><input class="input" id="c_name" value="${esc(f.name)}" placeholder="Ex: Bentec" /></div>
+          <label style="font-size:11.5px;color:var(--muted)">Forma de cobrança (marque tudo que essa empresa fatura)</label>
+          ${BILLING_KEYS.map(k => `<div class="field" style="display:flex;align-items:center;gap:8px;margin:8px 0"><input type="checkbox" id="c_bill_${k}" ${f.billing[k]?'checked':''} style="width:auto" /><label style="margin:0">${BILLING_LABELS[k]}</label></div>`).join("")}
+          <div style="margin-top:6px;border-top:1px solid var(--border);padding-top:14px">
+            <label style="font-size:11.5px;color:var(--muted)">Custo padrão de mão de obra por função — sugerido automaticamente ao cadastrar um funcionário dessa empresa/cargo.</label>
+            <div id="companyRoleRates" style="margin-top:10px"></div>
+            <button class="btn ghost small" id="addRoleBtn" style="margin-top:6px;width:auto">+ Adicionar função</button>
+          </div>
+          <div class="modal-actions">
+            <button class="btn ghost" id="cancelModal" type="button">Cancelar</button>
+            <button class="btn" id="saveCompany" type="button">Salvar empresa</button>
+          </div>
+        </div>
+      </div>
+    `;
+    renderRoleRates();
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+    BILLING_KEYS.forEach(k => $(`#c_bill_${k}`).addEventListener("change", renderRoleRates));
+    $("#addRoleBtn").addEventListener("click", () => { f.roleRates.push({ id: uid(), cargo:"", rates: Object.fromEntries(BILLING_KEYS.map(k=>[k,0])) }); renderRoleRates(); });
+    $("#saveCompany").addEventListener("click", async () => {
+      const billing = {}; BILLING_KEYS.forEach(k => { billing[k] = $(`#c_bill_${k}`).checked; });
+      const roleRates = f.roleRates.filter(r=>r.cargo && r.cargo.trim());
+      const updated = { id: f.id, name: $("#c_name").value.trim() || "Sem nome", billing, roleRates };
+      const btn = $("#saveCompany"); btn.disabled = true; btn.textContent = "Salvando…";
+      const { error } = await supabase.from("companies").upsert(companyToRow(updated));
+      if(error){ alert("Não consegui salvar: "+error.message); btn.disabled = false; btn.textContent = "Salvar empresa"; return; }
+      const exists = state.companies.some(c=>c.id===updated.id);
+      state.companies = exists ? state.companies.map(c=>c.id===updated.id?updated:c) : [...state.companies, updated];
+      close(); render();
+    });
+  }
+
+  // ---------------- Calendário (mês inteiro de um funcionário) ----------------
+  function calendarioHTML(){
+    if(!state.employees.length){
+      return `<h2 class="section">Calendário</h2><span class="link" data-tab="mais">← Mais</span><p class="empty" style="margin-top:14px">Nenhum funcionário cadastrado.</p>`;
+    }
+    if(!state.calendarEmployeeId || !state.employees.some(e=>e.id===state.calendarEmployeeId)) state.calendarEmployeeId = state.employees[0].id;
+    const employee = state.employees.find(e=>e.id===state.calendarEmployeeId);
+    const month = state.calendarMonth;
+    const [y,m] = month.split("-").map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const firstDow = new Date(y, m-1, 1).getDay();
+    const shift = state.shifts.find(s=>s.id===shiftIdForEmployeeOnDate(employee, `${month}-01`));
+    const cells = [];
+    for(let i=0;i<firstDow;i++) cells.push(null);
+    for(let d=1; d<=daysInMonth; d++) cells.push(`${month}-${String(d).padStart(2,"0")}`);
+    function cellHTML(dateISO){
+      if(!dateISO) return `<div></div>`;
+      const info = scheduledDayInfo(employee, dateISO);
+      const status = info.attendance ? attendanceStatus(info.attendance) : null;
+      const day = Number(dateISO.slice(8,10));
+      let bg = "transparent", color = "var(--muted)", label = "Folga";
+      if(info.holiday){ bg="rgba(167,139,250,.18)"; color="#c4b5fd"; label=info.holiday.name; }
+      else if(status==="presente"){ bg="rgba(52,211,153,.18)"; color="var(--emerald)"; label="Trabalhou"; }
+      else if(status==="falta"){ bg="rgba(251,113,133,.18)"; color="var(--rose)"; label="Falta"; }
+      else if(status==="ferias"){ bg="rgba(34,211,238,.18)"; color="var(--cyan)"; label="Férias"; }
+      else if(status==="folga"){ bg="transparent"; color="var(--muted)"; label="Folga (registrada)"; }
+      else if(info.scheduled && dateISO < todayISO()){ bg="rgba(251,191,36,.15)"; color="var(--amber)"; label="Sem apontamento"; }
+      else if(info.scheduled){ bg="rgba(11,107,51,.1)"; color="var(--brand-light)"; label="Previsto"; }
+      const outline = dateISO===todayISO() ? "outline:1px solid var(--brand-light);" : "";
+      return `<div data-daycell="${dateISO}" title="${esc(label)}" style="cursor:pointer;background:${bg};color:${color};${outline}border-radius:6px;padding:6px 2px;text-align:center;font-size:11px">${day}</div>`;
+    }
+    return `
+      <div class="row-flex" style="justify-content:space-between;margin-bottom:10px">
+        <h2 class="section" style="margin:0">Calendário</h2>
+        <span class="link" data-tab="mais">← Mais</span>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="field" style="margin-bottom:10px"><label>Funcionário</label>
+          <select class="input" id="calEmployee">${state.employees.map(e=>`<option value="${e.id}" ${e.id===state.calendarEmployeeId?'selected':''}>${esc(e.name)}</option>`).join("")}</select>
+        </div>
+        <div class="field" style="margin-bottom:0"><label>Mês</label><input type="month" class="input" id="calMonth" value="${month}" /></div>
+      </div>
+      <div class="card">
+        <div style="font-weight:700;margin-bottom:10px;font-size:13px">${esc(employee.name)} <span style="color:var(--muted);font-weight:400;font-size:11.5px">— ${shift?shiftLabel(shift):"sem turno padrão"}</span></div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">
+          ${WEEKDAY_LABELS.map(w=>`<div style="text-align:center;font-size:9.5px;color:var(--muted);font-weight:700">${w}</div>`).join("")}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">${cells.map(cellHTML).join("")}</div>
+        <div class="legend" style="margin-top:10px;font-size:10px;row-gap:4px">
+          <span><span class="dot" style="background:rgba(52,211,153,.8)"></span>Trabalhou</span>
+          <span><span class="dot" style="background:rgba(251,113,133,.8)"></span>Falta</span>
+          <span><span class="dot" style="background:rgba(251,191,36,.8)"></span>Sem apontamento</span>
+          <span><span class="dot" style="background:rgba(167,139,250,.8)"></span>Feriado</span>
+        </div>
+      </div>
+    `;
+  }
+
+  // ---------------- Mapa de Férias (lista por ano — timeline de Gantt não cabe numa tela de celular) ----------------
+  function mapaFeriasHTML(){
+    const year = state.mapaFeriasYear;
+    const yearStart = `${year}-01-01`, yearEnd = `${year}-12-31`;
+    const periods = state.timeOffRequests
+      .filter(r => r.type==="ferias" && r.status==="aprovado" && r.dateStart<=yearEnd && r.dateEnd>=yearStart)
+      .map(r => ({ req:r, employee: state.employees.find(e=>e.id===r.employeeId) }))
+      .filter(p => p.employee)
+      .sort((a,b) => a.req.dateStart<b.req.dateStart ? -1 : a.req.dateStart>b.req.dateStart ? 1 : 0);
+    return `
+      <h2 class="section">Mapa de Férias</h2>
+      <span class="link" data-tab="mais">← Mais</span>
+      <div class="card" style="margin:14px 0">
+        <div class="row-flex" style="justify-content:center;gap:16px">
+          <button class="btn ghost small" id="mfYearPrev" style="width:auto">‹</button>
+          <b style="font-size:15px">${year}</b>
+          <button class="btn ghost small" id="mfYearNext" style="width:auto">›</button>
+        </div>
+      </div>
+      <div class="card" style="padding:4px 16px">
+        ${periods.length ? periods.map(p => {
+          const company = state.companies.find(c=>c.id===p.employee.companyId);
+          return `
+          <div class="req-row" style="cursor:default">
+            <div class="d">${esc(p.employee.name)}${company?` <span style="color:var(--muted);font-weight:400">· ${esc(company.name)}</span>`:""}</div>
+            <div class="sub">${brDate(p.req.dateStart)} a ${brDate(p.req.dateEnd)}${p.req.diasVendidos>0?` · 💰 ${p.req.diasVendidos}d vendidos`:""}</div>
+          </div>`;
+        }).join("") : `<p class="empty">Nenhuma férias aprovada em ${year}.</p>`}
+      </div>
+    `;
+  }
+
+  // ---------------- Frequência (lançar por turno — a rotina do dia a dia) ----------------
+  function frequenciaHTML(){
+    const roster = computeDayRoster(state.frequencyDate);
+    const rosterRowHTML = (r, isPresent) => `
+      <div class="req-row" data-freqrow="${r.employee.id}">
+        <div class="d">${esc(r.employee.name)}</div>
+        <div class="sub">${isPresent ? (r.shift?esc(r.shift.name):"—") : (r.status==="ferias"?"Férias":"Folga")}</div>
+        ${isPresent ? `<span class="badge ${r.status==='presente'?'presente':r.status==='falta'?'falta':''}" style="margin-top:6px;display:inline-block;${!r.status?'background:rgba(251,191,36,.15);color:var(--amber);':''}">${r.status==='presente'?'Trabalhou':r.status==='falta'?'Faltou':'Sem apontamento'}</span>` : ""}
+      </div>`;
+    return `
+      <div class="row-flex" style="justify-content:space-between;margin-bottom:14px">
+        <h2 class="section" style="margin:0">Frequência</h2>
+        <span class="link" data-tab="mais">← Mais</span>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="field" style="margin-bottom:0"><label>Data</label><input type="date" class="input" id="freq_date" value="${state.frequencyDate}" /></div>
+      </div>
+      <h2 class="section">Deveriam trabalhar (${roster.present.length})</h2>
+      <div class="card" style="padding:4px 16px;margin-bottom:20px">
+        ${roster.present.length ? roster.present.map(r=>rosterRowHTML(r,true)).join("") : `<p class="empty">Ninguém escalado.</p>`}
+      </div>
+      <h2 class="section">Folga / férias (${roster.off.length})</h2>
+      <div class="card" style="padding:4px 16px">
+        ${roster.off.length ? roster.off.map(r=>rosterRowHTML(r,false)).join("") : `<p class="empty">Ninguém de folga/férias.</p>`}
+      </div>
+    `;
+  }
+  // Lançamento individual de um dia — toque num funcionário na Frequência abre isso. Data editável
+  // (input nativo, sem o calendário de intervalo do painel desktop — mais direto no celular).
+  function openAttendanceModal(employee, dateISO){
+    const existing = (employee.attendance||[]).find(a=>a.date===dateISO);
+    const info = scheduledDayInfo(employee, dateISO);
+    const expected = info.shift ? info.shift.hoursPerDay : 8;
+    const f = {
+      date: dateISO,
+      status: existing ? attendanceStatus(existing) : "presente",
+      turno: (existing && TURNOS.includes(existing.turno)) ? existing.turno : (info.shift && TURNOS.includes(info.shift.name) ? info.shift.name : TURNOS[0]),
+      hours: existing ? existing.hours : expected,
+      justification: (existing && existing.justification) || "",
+      atestado: !!(existing && existing.atestado),
+      atraso: !!(existing && existing.atraso),
+    };
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>${esc(employee.name)}</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          <div class="field"><label>Data</label><input type="date" class="input" id="a_date" value="${f.date}" /></div>
+          <div class="field"><label>Status</label>
+            <select class="input" id="a_status">${ATTENDANCE_STATUSES.map(s=>`<option value="${s}" ${s===f.status?'selected':''}>${ATTENDANCE_STATUS_LABELS[s]}</option>`).join("")}</select>
+          </div>
+          <div id="a_presenteFields" style="display:${f.status==='presente'?'block':'none'}">
+            <div class="field"><label>Turno</label><select class="input" id="a_turno">${TURNOS.map(t=>`<option ${t===f.turno?'selected':''}>${t}</option>`).join("")}</select></div>
+            <div class="field"><label>Horas trabalhadas</label><input type="number" step="0.5" class="input" id="a_hours" value="${f.hours}" /></div>
+            <div class="field"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="a_atraso" ${f.atraso?'checked':''} style="width:auto" /> Atraso</label></div>
+          </div>
+          <div id="a_faltaFields" style="display:${f.status==='falta'?'block':'none'}">
+            <div class="field"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="a_atestado" ${f.atestado?'checked':''} style="width:auto" /> Atestado</label></div>
+          </div>
+          <div class="field"><label>Observação</label><textarea class="input" id="a_justify" rows="2">${esc(f.justification)}</textarea></div>
+          <div class="modal-actions">
+            <button class="btn ghost" id="cancelModal" type="button">Cancelar</button>
+            <button class="btn" id="saveAttendance" type="button">Salvar</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+    $("#a_status").addEventListener("change", () => {
+      $("#a_presenteFields").style.display = $("#a_status").value==="presente" ? "block" : "none";
+      $("#a_faltaFields").style.display = $("#a_status").value==="falta" ? "block" : "none";
+    });
+    $("#saveAttendance").addEventListener("click", async () => {
+      const date = $("#a_date").value;
+      if(!date){ alert("Selecione uma data."); return; }
+      const status = $("#a_status").value;
+      const entry = {
+        id: existing?.id || uid(), date, status,
+        turno: status==="presente" ? $("#a_turno").value : "",
+        hours: status==="presente" ? Number($("#a_hours").value||0) : 0,
+        expectedHours: status==="presente" ? expected : null,
+        justification: $("#a_justify").value.trim(),
+        atestado: status==="falta" && $("#a_atestado").checked,
+        atraso: status==="presente" && $("#a_atraso").checked,
+      };
+      const btn = $("#saveAttendance"); btn.disabled = true; btn.textContent = "Salvando…";
+      const { error } = await supabase.from("attendance").upsert([attendanceToRow(employee.id, entry)], { onConflict:"employee_id,date" });
+      if(error){ alert("Não consegui salvar: "+error.message); btn.disabled = false; btn.textContent = "Salvar"; return; }
+      employee.attendance = [...(employee.attendance||[]).filter(a=>a.date!==date), entry];
+      close(); render();
+      notifyPerformanceEntries(employee.id, [entry]);
+    });
+  }
+
+  function appShellHTML(){
+    const pendingCount = state.timeOffRequests.filter(r=>r.status==="pendente").length;
+    const lockedCount = state.employees.filter(e=>e.lockedAt).length;
+    // Subtelas de "Mais" não são itens próprios do bottom nav — mantém "Mais" destacado nelas.
+    const MAIS_SUBTABS = ["frequencia","turnos","feriados","calendario","mapaferias","empresas","indicadores","dss","checklist"];
+    const navTab = MAIS_SUBTABS.includes(state.tab) ? "mais" : state.tab;
+    const mainHTML = {
+      inicio: inicioHTML, solicitacoes: solicitacoesHTML, funcionarios: funcionariosHTML,
+      frequencia: frequenciaHTML, turnos: turnosHTML, feriados: feriadosHTML,
+      calendario: calendarioHTML, mapaferias: mapaFeriasHTML, empresas: empresasHTML,
+      indicadores: indicadoresHTML, dss: dssAdminHTML, checklist: checklistAdminHTML,
+    }[state.tab] || maisHTML;
+    return `
+      <header class="top">
+        <div class="brand">Fertgrow Gestão</div>
+        <div class="who">${esc(state.session.user.email||"")}</div>
+      </header>
+      <main>${mainHTML()}</main>
+      <nav class="bottom">
+        <div class="n ${navTab==='inicio'?'active':''}" data-tab="inicio"><span class="ic">🏠</span>Início</div>
+        <div class="n ${navTab==='solicitacoes'?'active':''}" data-tab="solicitacoes"><span class="ic">📋</span>Solicitações${pendingCount>0?`<span class="nav-badge">${pendingCount}</span>`:""}</div>
+        <div class="n ${navTab==='funcionarios'?'active':''}" data-tab="funcionarios"><span class="ic">👥</span>Funcionários${lockedCount>0?`<span class="nav-badge">${lockedCount}</span>`:""}</div>
+        <div class="n ${navTab==='mais'?'active':''}" data-tab="mais"><span class="ic">☰</span>Mais</div>
+        <div class="n" data-tab="logout"><span class="ic">🚪</span>Sair</div>
+      </nav>`;
+  }
+
+  // ---------------- wiring ----------------
+  function wireView(){
+    if(state.view==="auth"){ $("#auth_submit").addEventListener("click", onAuthSubmit); return; }
+    if(state.view==="unauthorized"){ $("#unauth_logout").addEventListener("click", () => { state.view="auth"; render(); }); return; }
+    if(state.view!=="app") return;
+    document.querySelectorAll("[data-tab]").forEach(el => el.addEventListener("click", async () => {
+      if(el.dataset.tab==="logout"){ await supabase.auth.signOut(); state = {...state, view:"auth", session:null, profile:null}; render(); return; }
+      state.tab = el.dataset.tab; render();
+    }));
+    document.querySelectorAll("[data-goto]").forEach(el => el.addEventListener("click", () => { state.tab = el.dataset.goto; render(); }));
+    if(state.tab==="solicitacoes"){
+      document.querySelectorAll("[data-openreq]").forEach(el => el.addEventListener("click", () => openRequestDetailModal(el.dataset.openreq)));
+      const refreshBtn = $("#refreshReqBtn");
+      if(refreshBtn) refreshBtn.addEventListener("click", async () => { refreshBtn.disabled=true; refreshBtn.textContent="Atualizando…"; await refreshAllData(); });
+    }
+    if(state.tab==="funcionarios"){
+      const newEmployeeBtn = $("#newEmployeeBtn");
+      if(newEmployeeBtn) newEmployeeBtn.addEventListener("click", () => openEmployeeModal(null));
+      const searchInput = $("#employeeSearchInput");
+      if(searchInput) searchInput.addEventListener("input", () => { state.employeeSearch = searchInput.value; render(); const el = $("#employeeSearchInput"); if(el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); } });
+      document.querySelectorAll("[data-openemp]").forEach(el => el.addEventListener("click", () => openEmployeeModal(state.employees.find(e=>e.id===el.dataset.openemp))));
+      document.querySelectorAll("[data-resetpw]").forEach(el => el.addEventListener("click", (ev) => { ev.stopPropagation(); resetEmployeePassword(state.employees.find(e=>e.id===el.dataset.resetpw)); }));
+    }
+    if(state.tab==="frequencia"){
+      const dateInput = $("#freq_date");
+      if(dateInput) dateInput.addEventListener("change", () => { state.frequencyDate = dateInput.value || todayISO(); render(); });
+      document.querySelectorAll("[data-freqrow]").forEach(el => el.addEventListener("click", () => {
+        const employee = state.employees.find(e=>e.id===el.dataset.freqrow);
+        if(employee) openAttendanceModal(employee, state.frequencyDate);
+      }));
+    }
+    if(state.tab==="turnos"){
+      const newBtn = $("#newShiftBtn");
+      if(newBtn) newBtn.addEventListener("click", () => openWorkShiftModal(null));
+      document.querySelectorAll("[data-editshift]").forEach(el => el.addEventListener("click", () => openWorkShiftModal(state.shifts.find(s=>s.id===el.dataset.editshift))));
+    }
+    if(state.tab==="feriados"){
+      const newBtn = $("#newHolidayBtn");
+      if(newBtn) newBtn.addEventListener("click", () => openHolidayModal(null));
+      document.querySelectorAll("[data-editholiday]").forEach(el => el.addEventListener("click", () => openHolidayModal(state.holidays.find(h=>h.id===el.dataset.editholiday))));
+    }
+    if(state.tab==="empresas"){
+      const newBtn = $("#newCompanyBtn");
+      if(newBtn) newBtn.addEventListener("click", () => openCompanyModal(null));
+      document.querySelectorAll("[data-editcompany]").forEach(el => el.addEventListener("click", () => openCompanyModal(state.companies.find(c=>c.id===el.dataset.editcompany))));
+    }
+    if(state.tab==="calendario"){
+      const empSel = $("#calEmployee");
+      if(empSel) empSel.addEventListener("change", () => { state.calendarEmployeeId = empSel.value; render(); });
+      const monthInput = $("#calMonth");
+      if(monthInput) monthInput.addEventListener("change", () => { state.calendarMonth = monthInput.value || todayISO().slice(0,7); render(); });
+      document.querySelectorAll("[data-daycell]").forEach(el => el.addEventListener("click", () => {
+        const employee = state.employees.find(e=>e.id===state.calendarEmployeeId);
+        if(employee) openAttendanceModal(employee, el.dataset.daycell);
+      }));
+    }
+    if(state.tab==="mapaferias"){
+      const prevBtn = $("#mfYearPrev");
+      if(prevBtn) prevBtn.addEventListener("click", () => { state.mapaFeriasYear--; render(); });
+      const nextBtn = $("#mfYearNext");
+      if(nextBtn) nextBtn.addEventListener("click", () => { state.mapaFeriasYear++; render(); });
+    }
+    if(state.tab==="indicadores"){
+      const monthInput = $("#indMonth");
+      if(monthInput) monthInput.addEventListener("change", () => { state.indicadoresMonth = monthInput.value || todayISO().slice(0,7); render(); });
+      const reportBtn = $("#openManagementReportBtn");
+      if(reportBtn) reportBtn.addEventListener("click", openManagementReportModal);
+    }
+    if(state.tab==="dss"){
+      document.querySelectorAll("[data-dsstopic]").forEach(el => el.addEventListener("click", () => { state.dssFormDate = el.dataset.dsstopic; render(); }));
+      const dateInput = $("#dss_date");
+      if(dateInput) dateInput.addEventListener("change", () => { state.dssFormDate = dateInput.value; render(); });
+      const saveBtn = $("#dss_saveBtn");
+      if(saveBtn) saveBtn.addEventListener("click", async () => {
+        const date = $("#dss_date").value;
+        const title = $("#dss_title").value.trim();
+        const description = $("#dss_description").value.trim();
+        if(!title){ alert("Informe o título do tema."); return; }
+        const isNew = !state.dssTopics.some(t=>t.date===date);
+        saveBtn.disabled = true; saveBtn.textContent = "Salvando…";
+        const { error } = await supabase.from("dss_topics").upsert(dssTopicToRow({date,title,description}), {onConflict:"date"});
+        if(error){ alert("Não consegui salvar o tema de DSS: "+error.message); saveBtn.disabled = false; saveBtn.textContent = "💾 Salvar tema"; return; }
+        state.dssTopics = [{ id: state.dssTopics.find(t=>t.date===date)?.id || uid(), date, title, description }, ...state.dssTopics.filter(t=>t.date!==date)];
+        state.dssFormDate = date;
+        render();
+        if(isNew){
+          const rows = state.employees.filter(e=>e.status==="Ativo").map(e => ({ employee_id:e.id, type:"dss", title:"Novo tema de DSS disponível", body:`Tema de hoje: ${title}` }));
+          insertNotifications(rows);
+        }
+      });
+    }
+    if(state.tab==="checklist"){
+      const subTabs = document.querySelectorAll("[data-checklistsub]");
+      if(subTabs.length){
+        subTabs.forEach(el => el.addEventListener("click", () => { state.checklistSubTab = el.dataset.checklistsub; render(); }));
+      }
+      if(state.checklistSubTab==="historico"){
+        const monthInput = $("#checklistHistMonth"), empSelect = $("#checklistHistEmployee"), catSelect = $("#checklistHistCategory");
+        const reload = async () => {
+          state.checklistHistoryMonth = monthInput.value;
+          state.checklistHistoryEmployeeId = empSelect.value;
+          state.checklistHistoryCategoryId = catSelect.value;
+          await fetchChecklistHistory({ month: state.checklistHistoryMonth, employeeId: state.checklistHistoryEmployeeId, categoryId: state.checklistHistoryCategoryId });
+          render();
+        };
+        if(monthInput) monthInput.addEventListener("change", reload);
+        if(empSelect) empSelect.addEventListener("change", reload);
+        if(catSelect) catSelect.addEventListener("change", reload);
+        if(!checklistHistoryLoaded){ checklistHistoryLoaded = true; reload(); }
+        document.querySelectorAll("[data-histentry]").forEach(el => el.addEventListener("click", () => {
+          const detail = document.querySelector(`[data-histdetail="${el.dataset.histentry}"]`);
+          if(detail) detail.style.display = detail.style.display==="none" ? "block" : "none";
+        }));
+      } else {
+        const newCatBtn = $("#newChecklistCategoryBtn");
+        if(newCatBtn) newCatBtn.addEventListener("click", () => openChecklistCategoryModal(null));
+        document.querySelectorAll("[data-checklistcat]").forEach(el => el.addEventListener("click", () => { state.checklistModeloCategoryId = el.dataset.checklistcat; render(); }));
+        const editCatBtn = $("#editChecklistCategoryBtn");
+        if(editCatBtn) editCatBtn.addEventListener("click", () => openChecklistCategoryModal(state.checklistCategories.find(c=>c.id===state.checklistModeloCategoryId)));
+        const delCatBtn = $("#delChecklistCategoryBtn");
+        if(delCatBtn) delCatBtn.addEventListener("click", async () => {
+          const delId = state.checklistModeloCategoryId;
+          const areaCount = state.checklistAreas.filter(a=>a.categoryId===delId).length;
+          if(!confirm(areaCount ? `Essa categoria tem ${areaCount} área(s). Excluir a categoria também apaga as áreas e equipamentos dela. Continuar?` : "Excluir esta categoria?")) return;
+          const { error } = await supabase.from("checklist_categories").delete().eq("id", delId);
+          if(error){ alert("Não consegui excluir: "+error.message); return; }
+          const removedAreaIds = new Set(state.checklistAreas.filter(a=>a.categoryId===delId).map(a=>a.id));
+          state.checklistCategories = state.checklistCategories.filter(c=>c.id!==delId);
+          state.checklistAreas = state.checklistAreas.filter(a=>a.categoryId!==delId);
+          state.checklistEquipment = state.checklistEquipment.filter(e=>!removedAreaIds.has(e.areaId));
+          state.checklistModeloCategoryId = "";
+          render();
+        });
+        const newAreaBtn = $("#newChecklistAreaBtn");
+        if(newAreaBtn) newAreaBtn.addEventListener("click", () => openChecklistAreaModal(null, state.checklistModeloCategoryId));
+        document.querySelectorAll("[data-editarea]").forEach(el => el.addEventListener("click", () => openChecklistAreaModal(state.checklistAreas.find(a=>a.id===el.dataset.editarea))));
+        document.querySelectorAll("[data-delarea]").forEach(el => el.addEventListener("click", async () => {
+          const delId = el.dataset.delarea;
+          const hasEquip = state.checklistEquipment.some(e=>e.areaId===delId);
+          if(!confirm(hasEquip ? "Essa área tem equipamentos. Excluir a área também apaga os equipamentos dela. Continuar?" : "Excluir esta área?")) return;
+          const { error } = await supabase.from("checklist_areas").delete().eq("id", delId);
+          if(error){ alert("Não consegui excluir: "+error.message); return; }
+          state.checklistAreas = state.checklistAreas.filter(a=>a.id!==delId);
+          state.checklistEquipment = state.checklistEquipment.filter(e=>e.areaId!==delId);
+          render();
+        }));
+        document.querySelectorAll("[data-newequip]").forEach(el => el.addEventListener("click", () => openChecklistEquipmentModal(null, el.dataset.newequip)));
+        document.querySelectorAll("[data-editequip]").forEach(el => el.addEventListener("click", () => openChecklistEquipmentModal(state.checklistEquipment.find(e=>e.id===el.dataset.editequip))));
+        document.querySelectorAll("[data-delequip]").forEach(el => el.addEventListener("click", async () => {
+          if(!confirm("Excluir este equipamento?")) return;
+          const delId = el.dataset.delequip;
+          const { error } = await supabase.from("checklist_equipment").delete().eq("id", delId);
+          if(error){ alert("Não consegui excluir: "+error.message); return; }
+          state.checklistEquipment = state.checklistEquipment.filter(e=>e.id!==delId);
+          render();
+        }));
+      }
+    } else {
+      checklistHistoryLoaded = false;
+    }
+  }
+
+  if("serviceWorker" in navigator){
+    window.addEventListener("load", () => { navigator.serviceWorker.register("./sw-gestor.js").catch(()=>{}); });
+  }
+
+  bootstrap();
+})();
+</script>
+</body>
+</html>
