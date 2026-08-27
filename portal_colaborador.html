@@ -1,0 +1,1552 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>MANUTENÇÃO — Portal do Colaborador</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0B6B33" />
+<link rel="apple-touch-icon" href="icons/icon-180.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="MANUTENÇÃO" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root{
+    --bg:#0a1410; --surface:#101d16; --surface2:#16261d; --border:#213328;
+    --text:#e9f2ea; --muted:#8aa08d; --brand:#0B6B33; --brand-light:#AFD676;
+    --emerald:#34d399; --amber:#fbbf24; --rose:#fb7185; --cyan:#22d3ee; --violet:#a78bfa;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',Inter,sans-serif;font-size:15px;-webkit-tap-highlight-color:transparent;}
+  #app{max-width:480px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;padding-bottom:76px;}
+  header.top{padding:16px 18px;border-bottom:1px solid var(--border);position:sticky;top:0;background:rgba(10,20,16,.95);backdrop-filter:blur(6px);z-index:20;}
+  header.top .brand{font-weight:700;font-size:15px;}
+  header.top .who{font-size:12px;color:var(--muted);margin-top:2px;}
+  main{flex:1;padding:16px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;}
+  .input{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:11px 12px;border-radius:9px;font-size:15px;}
+  .input:focus{outline:none;border-color:var(--brand);}
+  .btn{width:100%;background:var(--brand);color:#fff;border:none;padding:12px 16px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;}
+  .btn:active{background:var(--brand-light);}
+  .btn.ghost{background:transparent;border:1px solid var(--border);color:var(--muted);}
+  .btn.small{padding:8px 12px;font-size:13px;width:auto;}
+  .msg{font-size:13px;padding:10px 12px;border-radius:9px;margin-bottom:14px;}
+  .msg.err{background:rgba(251,113,133,.12);border:1px solid rgba(251,113,133,.35);color:#fca5b1;}
+  .msg.ok{background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.35);color:#6ee7b7;}
+  .tabs2{display:flex;gap:6px;background:var(--surface2);padding:4px;border-radius:10px;margin-bottom:16px;}
+  .tabs2 .t{flex:1;text-align:center;padding:8px;border-radius:7px;font-size:13px;color:var(--muted);cursor:pointer;}
+  .tabs2 .t.active{background:var(--brand);color:#fff;font-weight:600;}
+  nav.bottom{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);display:flex;max-width:480px;margin:0 auto;z-index:30;}
+  nav.bottom .n{flex:1;text-align:center;padding:10px 4px 12px;color:var(--muted);cursor:pointer;font-size:11px;position:relative;}
+  nav.bottom .n .ic{font-size:19px;display:block;margin-bottom:2px;}
+  nav.bottom .n.active{color:var(--brand-light);}
+  h2.section{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:0 0 12px;font-weight:700;}
+  .cal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+  .cal-head b{font-size:14px;text-transform:capitalize;}
+  .iconbtn{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;width:32px;height:32px;font-size:16px;cursor:pointer;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;}
+  .cal-grid .dow{text-align:center;font-size:10px;color:var(--muted);font-weight:700;padding-bottom:2px;}
+  .cal-grid .day{border-radius:8px;padding:7px 2px;text-align:center;font-size:12px;min-height:38px;}
+  .legend2{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;font-size:10.5px;color:var(--muted);}
+  .legend2 span{display:inline-flex;align-items:center;gap:5px;}
+  .dot{width:8px;height:8px;border-radius:2px;display:inline-block;}
+  .att-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid rgba(33,51,40,.6);}
+  .att-row:last-child{border-bottom:none;}
+  .att-row .d{font-size:13px;font-weight:600;}
+  .att-row .sub{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .badge{padding:3px 9px;border-radius:6px;font-size:11px;font-weight:600;white-space:nowrap;}
+  .badge.presente{background:rgba(11,107,51,.15);color:var(--brand-light);border:1px solid rgba(11,107,51,.35);}
+  .badge.falta{background:rgba(251,113,133,.15);color:var(--rose);border:1px solid rgba(251,113,133,.35);}
+  .badge.folga{background:#1c2b21;color:var(--muted);}
+  .badge.ferias{background:rgba(34,211,238,.15);color:var(--cyan);border:1px solid rgba(34,211,238,.35);}
+  .badge.pendente{background:rgba(251,191,36,.15);color:var(--amber);border:1px solid rgba(251,191,36,.35);}
+  .badge.aprovado{background:rgba(52,211,153,.15);color:var(--emerald);border:1px solid rgba(52,211,153,.35);}
+  .badge.rejeitado{background:rgba(251,113,133,.15);color:var(--rose);border:1px solid rgba(251,113,133,.35);}
+  .modal-backdrop{position:fixed;inset:0;background:rgba(4,10,7,.7);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto;}
+  .modal h3{margin:0;font-size:16px;}
+  .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;flex-wrap:wrap;}
+  .req-row{padding:10px 0;border-bottom:1px solid rgba(33,51,40,.6);}
+  .req-row:last-child{border-bottom:none;}
+  .req-row .d{font-size:13px;font-weight:600;}
+  .req-row .sub{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .eq-area-title{font-size:13px;font-weight:700;color:var(--brand-light);margin:16px 0 8px;padding-left:8px;border-left:3px solid var(--brand);}
+  .eq-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px;}
+  .eq-card.selected{border-color:var(--brand-light);}
+  .eq-top{display:flex;align-items:center;gap:10px;}
+  .eq-top input[type=checkbox]{width:20px;height:20px;flex-shrink:0;accent-color:var(--brand);}
+  .eq-name{font-weight:600;font-size:13.5px;flex:1;}
+  .eq-status-row{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;}
+  .eq-status-btn{flex:1;min-width:42px;padding:8px 4px;border-radius:9px;border:1px solid var(--border);background:var(--surface2);font-size:16px;cursor:pointer;text-align:center;color:var(--text);}
+  .eq-status-btn.active{border-color:var(--brand-light);background:rgba(11,107,51,.3);}
+  .eq-details{margin-top:10px;display:flex;flex-direction:column;gap:8px;}
+  .eq-details textarea{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px 10px;border-radius:8px;font-size:13px;min-height:52px;resize:vertical;font-family:inherit;}
+  .mass-bar{position:sticky;top:64px;z-index:15;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:12px;}
+  .mass-bar .row1{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;margin-bottom:8px;}
+  .mass-bar .row1 input{width:20px;height:20px;accent-color:var(--brand);}
+  .report-output{background:#050a07;color:#d7e6da;padding:12px;border-radius:10px;white-space:pre-wrap;font-family:Consolas,monospace;font-size:11.5px;line-height:1.5;max-height:420px;overflow-y:auto;}
+  .colega-suggestions{margin-top:6px;border:1px solid var(--border);border-radius:9px;overflow:hidden;max-height:200px;overflow-y:auto;}
+  .colega-suggestion{padding:10px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid rgba(33,51,40,.6);}
+  .colega-suggestion:last-child{border-bottom:none;}
+  .colega-suggestion:active{background:var(--surface2);}
+  .colega-suggestion .sub{color:var(--muted);font-size:11.5px;margin-left:6px;}
+  .colega-suggestion.muted{color:var(--muted);cursor:default;}
+  .colega-item{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface2);border-radius:8px;}
+  .colega-item .name{font-size:13px;}
+  .colega-item .name .sub{color:var(--muted);font-size:11.5px;margin-left:6px;}
+  .hist-row{padding:10px 0;border-bottom:1px solid rgba(33,51,40,.6);font-size:12.5px;}
+  .hist-row:last-child{border-bottom:none;}
+  .hist-row .d{font-weight:600;font-size:13px;}
+  .hist-row .sub{color:var(--muted);margin-top:2px;}
+  .nav-badge{position:absolute;top:2px;right:calc(50% - 22px);background:var(--rose);color:#fff;border-radius:999px;min-width:16px;height:16px;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;}
+  .empty{text-align:center;color:var(--muted);padding:40px 16px;font-size:13px;}
+  .spinner{text-align:center;padding:40px;color:var(--muted);font-size:13px;}
+  a.link{color:var(--brand-light);cursor:pointer;text-decoration:underline;font-size:13px;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="modalRoot"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ===================================================================
+  // CONFIGURAÇÃO — cole aqui a URL e a chave "anon public" do seu
+  // projeto Supabase (Project Settings > API). Sem isso o portal não
+  // consegue se conectar ao banco compartilhado.
+  // ===================================================================
+  const SUPABASE_URL = "https://eusvotyusfwxolczqzlc.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_2Uee6RYvUtvR5m4Vy6yyDQ_fgEeGEsX";
+
+  const configured = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
+  const supabase = configured && window.supabase
+    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    : null;
+
+  // ---------------- helpers (mesma lógica do painel do gestor) ----------------
+  const $ = (sel, root=document) => root.querySelector(sel);
+  const esc = (s) => String(s??"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  // new Date().toISOString() converte pra UTC — perto da meia-noite local (Brasil, UTC-3) isso pode
+  // devolver o dia de AMANHÃ. Monta a data a partir dos componentes locais em vez disso.
+  const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+  const uid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+    const r = Math.random()*16|0, v = c==="x" ? r : (r&0x3|0x8);
+    return v.toString(16);
+  });
+  function toISO(d){ return d.toISOString().slice(0,10); }
+  function brDate(iso){ if(!iso) return "—"; const [y,m,d]=iso.split("-"); return `${d}/${m}/${y}`; }
+  function addDays(iso,n){ const d=new Date(iso+"T00:00:00"); d.setDate(d.getDate()+n); return toISO(d); }
+  function addMonths(monthStr, delta){
+    const [y,m] = monthStr.split("-").map(Number);
+    const d = new Date(y, (m-1)+delta, 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  }
+  function round2(n){ return Math.round((Number(n)||0)*100)/100; }
+  const WEEKDAY_LABELS = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const ATTENDANCE_STATUS_LABELS = { presente:"Presente", falta:"Falta", folga:"Folga", ferias:"Férias" };
+  const REQUEST_TYPE_LABEL = { falta:"Falta", folga:"Folga", ferias:"Férias", solicitacao_geral:"Solicitação", atraso:"Atraso" };
+  const NOTIFICATION_ICON = { turno:"🔄", ferias:"🏖️", desempenho:"⚠️", dss:"🦺", solicitacao_geral:"📝" };
+  const REQUEST_STATUS_LABEL = { pendente:"Pendente", aprovado:"Aprovado", rejeitado:"Rejeitado" };
+  const CHECKLIST_STATUS_OPTIONS = ["✅","❌","⚠️","🚧","🚨"];
+
+  function attendanceStatus(entry){
+    if(!entry) return null;
+    if(entry.status) return entry.status;
+    return entry.present ? "presente" : "falta";
+  }
+  function findHoliday(holidays, dateISO){
+    return (holidays||[]).find(h => h.date===dateISO || (h.recurring && h.date.slice(5)===dateISO.slice(5)));
+  }
+  function shiftWorksOnDate(shift, dateISO){
+    if(!shift) return false;
+    if(shift.mode==="semanal"){
+      const dow = new Date(dateISO+"T00:00:00").getDay();
+      return (shift.weekdays||[]).includes(dow);
+    }
+    const cycleLen = Math.max(1, Number(shift.cycle_work||0) + Number(shift.cycle_rest||0));
+    const anchor = shift.cycle_anchor || todayISO();
+    let offset = Math.round((new Date(dateISO)-new Date(anchor))/86400000) % cycleLen;
+    if(offset < 0) offset += cycleLen;
+    return offset < Number(shift.cycle_work||0);
+  }
+  function scheduledDayInfo(employee, shift, holidays, attendanceList, dateISO){
+    const holiday = findHoliday(holidays, dateISO);
+    const scheduled = !!shift && shiftWorksOnDate(shift, dateISO) && !holiday;
+    const attendance = (attendanceList||[]).find(a=>a.date===dateISO);
+    return { shift, holiday, scheduled, attendance };
+  }
+  function attendanceDayStyle(employee, shift, holidays, attendanceList, dateISO){
+    const info = scheduledDayInfo(employee, shift, holidays, attendanceList, dateISO);
+    const status = info.attendance ? attendanceStatus(info.attendance) : null;
+    if(info.holiday) return { bg:"rgba(167,139,250,.22)", color:"#c4b5fd", label:info.holiday.name };
+    if(status==="presente") return { bg:"rgba(52,211,153,.22)", color:"var(--emerald)", label:"Trabalhou" };
+    if(status==="falta") return { bg:"rgba(251,113,133,.22)", color:"var(--rose)", label:"Faltou" };
+    if(status==="ferias") return { bg:"rgba(34,211,238,.22)", color:"var(--cyan)", label:"Férias" };
+    if(status==="folga") return { bg:"transparent", color:"var(--muted)", label:"Folga" };
+    if(info.scheduled && dateISO < todayISO()) return { bg:"rgba(251,191,36,.22)", color:"var(--amber)", label:"Sem apontamento" };
+    if(info.scheduled) return { bg:"rgba(11,107,51,.15)", color:"var(--brand-light)", label:"Previsto" };
+    return { bg:"transparent", color:"var(--muted)", label:"Folga" };
+  }
+  function attendanceEntryHoursBreakdown(shift, holidays, entry){
+    if(!entry || attendanceStatus(entry)!=="presente") return { normalHours:0, overtimeHours:0, kind:null };
+    const hours = round2(Number(entry.hours||0));
+    if(hours<=0) return { normalHours:0, overtimeHours:0, kind:null };
+    const holiday = findHoliday(holidays, entry.date);
+    const scheduled = !!shift && shiftWorksOnDate(shift, entry.date) && !holiday;
+    const expected = entry.expected_hours ?? (shift ? shift.hours_per_day : hours);
+    if(!scheduled) return { normalHours:0, overtimeHours:hours, kind:"restday" };
+    if(hours > expected) return { normalHours:expected, overtimeHours: round2(hours-expected), kind:"workday" };
+    return { normalHours:hours, overtimeHours:0, kind:null };
+  }
+  // Resolve qual turno valia numa data específica, usando state.shiftHistory (histórico de trocas
+  // gravado pelo gestor) — acha a linha com o maior effectiveFrom que ainda seja <= dateISO. Sem
+  // histórico (nunca teve troca rastreada), cai no turno atual (state.shift).
+  function shiftForDate(dateISO){
+    const history = state.shiftHistory || [];
+    if(!history.length) return state.shift;
+    let resolved = null;
+    history.forEach(h => { if(h.effectiveFrom <= dateISO && (!resolved || h.effectiveFrom > resolved.effectiveFrom)) resolved = h; });
+    const shiftId = resolved ? resolved.shiftId : history.reduce((a,b)=> a.effectiveFrom < b.effectiveFrom ? a : b).shiftId;
+    return state.shifts.find(s=>s.id===shiftId) || null;
+  }
+
+  // ---------------- estado ----------------
+  let state = {
+    view: configured ? "loading" : "unconfigured",
+    authMode: "login", // "login" | "signup"
+    authError: "",
+    authInfo: "",
+    session: null,
+    profile: null,
+    employee: null,
+    company: null,
+    shift: null,
+    shifts: [],
+    holidays: [],
+    attendance: [],
+    myRequests: [],
+    checklistToday: null,
+    checklistTodayRows: [], // um por categoria já enviada hoje (ver checklist_categories)
+    checklistCategories: [],
+    checklistCategory: null, // categoria escolhida nesta sessão — reseta a cada login/refresh
+    checklistAreas: [],
+    checklistEquipment: [],
+    checklistDraft: [],
+    checklistColegas: [], // [{id, name, cargo}] colegas de turno adicionados ao checklist de hoje
+    checklistHistory: [],
+    checklistReport: "",
+    allEmployeesPublic: [], // [{id, name, cargo}] via RPC list_public_employees() — só pra busca de colegas
+    notifications: [],
+    dssToday: null,
+    shiftHistory: [],
+    dssExpanded: false,
+    tab: "escala",
+    calMonth: todayISO().slice(0,7),
+  };
+  let checklistSelected = new Set(); // ids de equipamento marcados no checklist pra aplicar status em massa
+  let checklistSaveTimer = null;
+  let colegaSearch = ""; // texto digitado na busca de colegas de turno (não persistido)
+
+  function render(){ $("#app").innerHTML = viewHTML(); wireView(); }
+
+  function viewHTML(){
+    if(state.view==="unconfigured") return unconfiguredHTML();
+    if(state.view==="loading") return `<div class="spinner">Carregando…</div>`;
+    if(state.view==="auth") return authHTML();
+    if(state.view==="unlinked") return unlinkedHTML();
+    return appShellHTML();
+  }
+
+  function unconfiguredHTML(){
+    return `
+      <header class="top"><div class="brand">MANUTENÇÃO — Portal do Colaborador</div></header>
+      <main>
+        <div class="card">
+          <p style="margin-top:0">Este portal ainda não foi conectado ao banco compartilhado.</p>
+          <p style="color:var(--muted);font-size:13px">Peça pro gestor preencher <code>SUPABASE_URL</code> e <code>SUPABASE_ANON_KEY</code> no topo deste arquivo (ver <code>supabase_schema.sql</code> pra criar o banco primeiro).</p>
+        </div>
+      </main>`;
+  }
+
+  function authHTML(){
+    const isSignup = state.authMode==="signup";
+    return `
+      <header class="top"><div class="brand">MANUTENÇÃO</div><div class="who">Portal do Colaborador</div></header>
+      <main>
+        <div class="tabs2">
+          <div class="t ${!isSignup?'active':''}" data-authtab="login">Entrar</div>
+          <div class="t ${isSignup?'active':''}" data-authtab="signup">Criar conta</div>
+        </div>
+        ${state.authError ? `<div class="msg err">${esc(state.authError)}</div>` : ""}
+        ${state.authInfo ? `<div class="msg ok">${esc(state.authInfo)}</div>` : ""}
+        <div class="card">
+          ${isSignup ? `<p style="margin-top:0;font-size:12.5px;color:var(--muted)">Use o mesmo e-mail que o gestor cadastrou na sua ficha de funcionário — é assim que o sistema sabe quem é você.</p>` : ""}
+          <div class="field"><label>E-mail</label><input type="email" class="input" id="auth_email" autocomplete="email" /></div>
+          <div class="field"><label>Senha</label><input type="password" class="input" id="auth_password" autocomplete="${isSignup?'new-password':'current-password'}" /></div>
+          <button class="btn" id="auth_submit">${isSignup?'Criar conta':'Entrar'}</button>
+        </div>
+      </main>`;
+  }
+
+  function unlinkedHTML(){
+    return `
+      <header class="top"><div class="brand">MANUTENÇÃO</div><div class="who">Portal do Colaborador</div></header>
+      <main>
+        <div class="card">
+          <p style="margin-top:0">Sua conta foi criada, mas não encontrei nenhum funcionário cadastrado com esse e-mail.</p>
+          <p style="color:var(--muted);font-size:13px">Fale com o gestor pra conferir se o e-mail da sua ficha está certo. Depois disso, saia e entre de novo.</p>
+          <button class="btn ghost" id="unlinked_logout" style="margin-top:8px">Sair</button>
+        </div>
+      </main>`;
+  }
+
+  // Solicitações decididas (aprovadas/rejeitadas) depois da última vez que o colaborador abriu a aba
+  // Escala — não existe conceito de "visto" no banco, então usamos localStorage só pra esse timestamp.
+  // ferias=true conta só solicitações de férias; ferias=false conta só falta/folga.
+  function unseenRequestUpdatesCount(ferias){
+    const key = ferias ? "lastSeenFerias_" : "lastSeenRequests_";
+    const lastSeen = localStorage.getItem(key+state.employee.id) || "1970-01-01T00:00:00.000Z";
+    return state.myRequests.filter(r => (r.type==="ferias")===ferias && r.status!=="pendente" && r.updated_at && r.updated_at > lastSeen).length;
+  }
+  // ---------------- instalação do app (PWA) ----------------
+  let deferredInstallPrompt = null; // guardado quando o Chrome/Android dispara beforeinstallprompt
+  let installDismissed = false; // esconde o botão nesta sessão depois de instalar ou de mostrar a dica do iOS
+  function isIOSDevice(){ return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream; }
+  function isStandaloneApp(){ return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone===true; }
+  function installButtonHTML(){
+    if(isStandaloneApp() || installDismissed) return "";
+    if(deferredInstallPrompt) return `<button type="button" class="btn small" id="installAppBtn" style="width:auto;padding:8px 12px;white-space:nowrap">📲 Instalar app</button>`;
+    if(isIOSDevice()) return `<button type="button" class="btn ghost small" id="installAppHint" style="width:auto;padding:8px 12px;white-space:nowrap">📲 Instalar</button>`;
+    return "";
+  }
+  // ---------------- notificação push (avisa quando o gestor aprova/rejeita um pedido) ----------------
+  // Chave pública VAPID — segura de expor no cliente (é assim que Web Push funciona; só a privada,
+  // usada pela Edge Function pra assinar o envio, precisa ficar em segredo).
+  const VAPID_PUBLIC_KEY = "BIHu1eHh0KBXtE7FSxQDOOynFcAsz-IqH8XFl7p086hZnyU8rx4Er852OQgOgTy4oloikicxuXqY4BXoRRNnqUY";
+  let pushDismissed = false; // esconde o botão nesta sessão depois de ativar ou de decidir não ativar agora
+  let replyOpenForRequestId = null; // id da solicitação geral com a caixa de resposta aberta, se houver
+  function urlBase64ToUint8Array(base64String){
+    const padding = "=".repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(base64);
+    return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+  }
+  function pushSupported(){ return "Notification" in window && "serviceWorker" in navigator && "PushManager" in window; }
+  function pushButtonHTML(){
+    if(!pushSupported() || pushDismissed) return "";
+    if(Notification.permission!=="default") return ""; // já concedida ou já negada — nada a pedir
+    return `<button type="button" class="btn ghost small" id="pushAppBtn" style="width:auto;padding:8px 12px;white-space:nowrap">🔔 Ativar notificações</button>`;
+  }
+  async function enablePushNotifications(){
+    try{
+      const permission = await Notification.requestPermission();
+      if(permission==="granted"){
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+        const json = subscription.toJSON();
+        await supabase.from("push_subscriptions").upsert({
+          employee_id: state.employee.id, endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth,
+        }, {onConflict:"endpoint"});
+      }
+    }catch(err){ console.error("Falha ao ativar notificações", err); }
+    pushDismissed = true;
+    render();
+  }
+  // ---------------- sininho de notificações (inbox — turno, férias, desempenho, DSS, solicitação geral) ----------------
+  function unreadNotificationsCount(){ return state.notifications.filter(n=>!n.read_at).length; }
+  function bellButtonHTML(){
+    const count = unreadNotificationsCount();
+    return `<button type="button" class="btn ghost small" id="bellBtn" style="width:auto;padding:8px 12px;white-space:nowrap">🔔${count>0?`<span class="nav-badge" style="position:static;display:inline-flex;margin-left:4px;vertical-align:middle">${count}</span>`:""}</button>`;
+  }
+  async function markNotificationRead(id){
+    const n = state.notifications.find(x=>x.id===id);
+    if(!n || n.read_at) return;
+    n.read_at = new Date().toISOString();
+    render();
+    try{ await supabase.from("notifications").update({ read_at: n.read_at }).eq("id", id); }
+    catch(err){ console.error("Falha ao marcar notificação como lida", err); }
+  }
+  function openNotificationsModal(){
+    function renderList(){
+      $("#modalRoot").innerHTML = `
+        <div class="modal-backdrop" id="backdrop">
+          <div class="modal">
+            <div class="modal-head"><h3>Notificações</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+            <div style="max-height:60vh;overflow-y:auto">
+              ${state.notifications.length ? state.notifications.map(n => `
+                <div class="req-row" data-notif="${n.id}" style="${!n.read_at?'font-weight:600':'opacity:.75'};cursor:pointer">
+                  <div class="d">${NOTIFICATION_ICON[n.type]||"🔔"} ${esc(n.title)}</div>
+                  ${n.body ? `<div class="sub">${esc(n.body)}</div>` : ""}
+                  <div class="sub" style="margin-top:2px">${new Date(n.created_at).toLocaleString("pt-BR")}</div>
+                </div>`).join("") : `<p style="color:var(--muted);font-size:12.5px;padding:10px 0">Nenhuma notificação ainda.</p>`}
+            </div>
+            <div class="modal-actions">
+              <button class="btn ghost" id="cancelModal" type="button">Fechar</button>
+            </div>
+          </div>
+        </div>
+      `;
+      const close = () => { $("#modalRoot").innerHTML = ""; render(); };
+      $("#closeModal").addEventListener("click", close);
+      $("#cancelModal").addEventListener("click", close);
+      $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+      document.querySelectorAll("[data-notif]").forEach(el => el.addEventListener("click", async () => {
+        await markNotificationRead(el.dataset.notif);
+        renderList();
+      }));
+    }
+    renderList();
+  }
+  function openChangePasswordModal(){
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>Trocar senha</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          <div class="field"><label>Senha atual</label><input type="password" class="input" id="cp_current" autocomplete="current-password" /></div>
+          <div class="field" style="margin-top:10px"><label>Nova senha</label><input type="password" class="input" id="cp_new" autocomplete="new-password" /></div>
+          <div class="field" style="margin-top:10px"><label>Confirmar nova senha</label><input type="password" class="input" id="cp_confirm" autocomplete="new-password" /></div>
+          <div id="cp_msg" class="msg err" style="display:none;margin-top:10px"></div>
+          <div class="modal-actions">
+            <button class="btn ghost" id="cancelModal" type="button">Cancelar</button>
+            <button class="btn" id="cp_submit" type="button">Salvar nova senha</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+    $("#cp_submit").addEventListener("click", async () => {
+      const msgEl = $("#cp_msg");
+      const showErr = (msg) => { msgEl.className = "msg err"; msgEl.textContent = msg; msgEl.style.display = "block"; };
+      msgEl.style.display = "none";
+      const current = $("#cp_current").value;
+      const novaSenha = $("#cp_new").value;
+      const confirmSenha = $("#cp_confirm").value;
+      if(!current || !novaSenha || !confirmSenha){ showErr("Preencha todos os campos."); return; }
+      if(novaSenha.length < 6){ showErr("A nova senha precisa ter pelo menos 6 caracteres."); return; }
+      if(novaSenha !== confirmSenha){ showErr("A confirmação não bate com a nova senha."); return; }
+      const btn = $("#cp_submit"); btn.disabled = true; btn.textContent = "Salvando…";
+      try{
+        // Reautentica com a senha atual antes de trocar — evita que alguém troque a senha de outra
+        // pessoa só porque achou uma sessão aberta no celular de um colega.
+        const { error: reauthErr } = await supabase.auth.signInWithPassword({ email: state.session.user.email, password: current });
+        if(reauthErr){ showErr("Senha atual incorreta."); btn.disabled=false; btn.textContent="Salvar nova senha"; return; }
+        const { error: updateErr } = await supabase.auth.updateUser({ password: novaSenha });
+        if(updateErr){ showErr("Não consegui trocar a senha: "+updateErr.message); btn.disabled=false; btn.textContent="Salvar nova senha"; return; }
+        close();
+        alert("Senha alterada com sucesso!");
+      }catch(err){ showErr("Falha de conexão: "+err.message); btn.disabled=false; btn.textContent="Salvar nova senha"; }
+    });
+  }
+  function appShellHTML(){
+    const e = state.employee;
+    const unseenEscala = unseenRequestUpdatesCount(false);
+    const unseenFerias = unseenRequestUpdatesCount(true);
+    return `
+      <header class="top">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+          <div>
+            <div class="brand">${esc(e.name)}</div>
+            <div class="who">${esc(e.cargo||"")}${state.company?` · ${esc(state.company.name)}`:""}${state.shift?` · ${esc(state.shift.name)}`:""}</div>
+            ${pendingSyncCount()>0 ? `<span id="pendingSyncBadge" class="nav-badge" style="position:static;display:inline-block;margin-top:4px" title="Aguardando conexão pra sincronizar">🔄 ${pendingSyncCount()}</span>` : ""}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+            ${bellButtonHTML()}
+            <button type="button" class="btn ghost small" id="changePasswordBtn" style="width:auto;padding:8px 12px;white-space:nowrap">🔑 Senha</button>
+            ${installButtonHTML()}
+            ${pushButtonHTML()}
+          </div>
+        </div>
+      </header>
+      <main>${state.tab==="escala"?escalaHTML():state.tab==="ponto"?pontoHTML():state.tab==="ferias"?feriasHTML():checklistHTML()}</main>
+      <nav class="bottom">
+        <div class="n ${state.tab==='escala'?'active':''}" data-tab="escala"><span class="ic">📅</span>Escala${unseenEscala>0?`<span class="nav-badge">${unseenEscala}</span>`:""}</div>
+        <div class="n ${state.tab==='ponto'?'active':''}" data-tab="ponto"><span class="ic">🕐</span>Ponto</div>
+        <div class="n ${state.tab==='ferias'?'active':''}" data-tab="ferias"><span class="ic">🏖️</span>Férias${unseenFerias>0?`<span class="nav-badge">${unseenFerias}</span>`:""}</div>
+        <div class="n ${state.tab==='checklist'?'active':''}" data-tab="checklist"><span class="ic">✅</span>Checklist</div>
+        <div class="n" data-tab="logout"><span class="ic">🚪</span>Sair</div>
+      </nav>`;
+  }
+
+  function escalaHTML(){
+    const month = state.calMonth;
+    const [y,m] = month.split("-").map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const firstDow = new Date(y, m-1, 1).getDay();
+    const cells = [];
+    for(let i=0;i<firstDow;i++) cells.push(null);
+    for(let d=1; d<=daysInMonth; d++) cells.push(`${month}-${String(d).padStart(2,"0")}`);
+    const monthLabel = new Date(y,m-1,1).toLocaleDateString("pt-BR",{month:"long", year:"numeric"});
+    return `
+      ${state.dssToday ? `
+      <div class="card" id="dssTodayCard" style="margin-bottom:14px;cursor:pointer">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:700;font-size:13px">🦺 DSS de hoje: ${esc(state.dssToday.title)}</div>
+          <span style="font-size:11px;color:var(--muted)">${state.dssExpanded?"▲":"▼"}</span>
+        </div>
+        ${state.dssExpanded ? `<div style="font-size:12.5px;color:var(--muted);margin-top:8px;white-space:pre-wrap">${esc(state.dssToday.description)}</div>` : ""}
+      </div>` : ""}
+      <h2 class="section">Sua escala</h2>
+      <div class="card">
+        <div class="cal-head">
+          <button class="iconbtn" id="calPrev">‹</button>
+          <b>${monthLabel}</b>
+          <button class="iconbtn" id="calNext">›</button>
+        </div>
+        <div class="cal-grid">
+          ${WEEKDAY_LABELS.map(w=>`<div class="dow">${w}</div>`).join("")}
+          ${cells.map(dateISO => {
+            if(!dateISO) return `<div></div>`;
+            const style = attendanceDayStyle(state.employee, shiftForDate(dateISO), state.holidays, state.attendance, dateISO);
+            const day = Number(dateISO.slice(8,10));
+            const todayMark = dateISO===todayISO() ? "box-shadow:0 0 0 2px var(--brand-light) inset;" : "";
+            return `<div class="day" data-calday="${dateISO}" title="${esc(style.label)} · toque pra ver os detalhes do dia" style="background:${style.bg};color:${style.color};${todayMark}cursor:pointer">${day}</div>`;
+          }).join("")}
+        </div>
+        <div class="legend2">
+          <span><span class="dot" style="background:rgba(52,211,153,.8)"></span>Trabalhou</span>
+          <span><span class="dot" style="background:rgba(251,113,133,.8)"></span>Faltou</span>
+          <span><span class="dot" style="background:rgba(34,211,238,.8)"></span>Férias</span>
+          <span><span class="dot" style="background:rgba(251,191,36,.8)"></span>Sem apontamento</span>
+          <span><span class="dot" style="background:rgba(167,139,250,.8)"></span>Feriado</span>
+          <span><span class="dot" style="background:transparent;border:1px solid var(--border)"></span>Folga</span>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin:10px 0 0;text-align:center">Toque num dia pra ver os detalhes</p>
+      </div>
+      ${!state.shift ? `<p style="color:var(--muted);font-size:12.5px;margin-top:12px">Você ainda não tem um turno padrão definido — fale com o gestor.</p>` : ""}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px">
+        <h2 class="section" style="margin:0">Minhas solicitações</h2>
+        <button class="btn ghost small" id="newRequestBtn" type="button">+ Nova solicitação</button>
+      </div>
+      ${(() => { const naoFerias = state.myRequests.filter(r=>r.type!=="ferias"); return naoFerias.length ? `
+      <div class="card" style="padding:4px 16px;margin-top:10px">
+        ${naoFerias.slice(0,20).map(r => {
+          const isGeneral = r.type==="solicitacao_geral";
+          const awaitingAction = isGeneral && r.status!=="pendente" && !r.finalizado_em;
+          const showReplyBox = awaitingAction && replyOpenForRequestId===r.id;
+          return `
+          <div class="req-row">
+            <div class="d">${isGeneral ? `${r.ticket_number?`#${r.ticket_number} — `:""}${esc(r.title||"Solicitação")}` : `${REQUEST_TYPE_LABEL[r.type]} — ${brDate(r.date_start)}`}</div>
+            ${r.reason ? `<div class="sub">${esc(r.reason)}</div>` : ""}
+            <span class="badge ${r.status}" style="margin-top:6px;display:inline-block">${REQUEST_STATUS_LABEL[r.status]}</span>
+            ${r.admin_response ? `<div class="sub" style="margin-top:4px">Resposta do gestor: ${esc(r.admin_response)}</div>` : ""}
+            ${r.colaborador_reply ? `<div class="sub" style="margin-top:4px">Sua resposta: ${esc(r.colaborador_reply)}</div>` : ""}
+            ${isGeneral && r.finalizado_em ? `<div class="sub" style="margin-top:4px">🔒 Finalizada em ${brDate(r.finalizado_em.slice(0,10))}</div>` : ""}
+            ${awaitingAction && !r.colaborador_reply ? `
+              <div class="row-flex" style="margin-top:8px;gap:6px">
+                <button class="btn ghost small" type="button" data-toggle-reply="${r.id}">${showReplyBox?"Cancelar":"Responder"}</button>
+                <button class="btn ghost small" type="button" data-finalize-req="${r.id}">Finalizar</button>
+              </div>
+              ${showReplyBox ? `
+                <div style="margin-top:6px">
+                  <textarea class="input" id="reply_${r.id}" rows="2" placeholder="Escreva sua resposta..."></textarea>
+                  <button class="btn small" type="button" style="margin-top:6px" data-send-reply="${r.id}">Enviar resposta</button>
+                </div>` : ""}
+            ` : ""}
+          </div>`; }).join("")}
+      </div>` : `<p style="color:var(--muted);font-size:12px;margin-top:10px">Nenhuma solicitação ainda.</p>`; })()}
+    `;
+  }
+
+  function pontoHTML(){
+    const since = addDays(todayISO(), -6); // últimos 7 dias (hoje incluso) — lista completa polui muito
+    // Comparação por valor numérico de data (não por string) — robusta contra qualquer formatação de
+    // data fora do padrão zero-padded "AAAA-MM-DD" (ex: "2026-1-15"), que na comparação de STRING pura
+    // podia ficar "maior" que uma data recente tipo "2026-08-18" e vazar pra dentro do filtro por engano.
+    const sinceTime = new Date(since+"T00:00:00").getTime();
+    const recent = state.attendance.filter(a => {
+      const t = new Date(a.date+"T00:00:00").getTime();
+      return !Number.isNaN(t) && t >= sinceTime;
+    });
+    // Férias é uma natureza de registro diferente de ponto do dia a dia — mistura os dois na mesma
+    // lista deixa a tela poluída, então ficam em seções separadas.
+    const ponto = recent.filter(a => attendanceStatus(a)!=="ferias").sort((a,b)=> a.date < b.date ? 1 : -1);
+    const ferias = recent.filter(a => attendanceStatus(a)==="ferias").sort((a,b)=> a.date < b.date ? 1 : -1);
+    const rowHTML = (a) => {
+      const status = attendanceStatus(a);
+      const ob = attendanceEntryHoursBreakdown(shiftForDate(a.date), state.holidays, a);
+      return `
+      <div class="att-row">
+        <div>
+          <div class="d">${brDate(a.date)}</div>
+          <div class="sub">${esc(a.turno||"")}${a.hours?` · ${a.hours}h`:""}${ob.overtimeHours>0?` · ⚡${ob.overtimeHours}h extra`:""}${a.atraso?` · ⏰ atraso`:""}</div>
+        </div>
+        <span class="badge ${status}">${ATTENDANCE_STATUS_LABELS[status]||status}</span>
+      </div>`;
+    };
+    return `
+      <h2 class="section">Meus apontamentos</h2>
+      <p style="font-size:11.5px;color:var(--muted);margin:-8px 0 10px">Últimos 7 dias</p>
+      <div class="card" style="padding:4px 16px">
+        ${ponto.length ? ponto.map(rowHTML).join("") : `<div class="empty">Nenhum apontamento de ponto nos últimos 7 dias.</div>`}
+      </div>
+      ${ferias.length ? `
+      <h2 class="section" style="margin-top:20px">Férias no período</h2>
+      <div class="card" style="padding:4px 16px">
+        ${ferias.map(rowHTML).join("")}
+      </div>` : ""}
+    `;
+  }
+
+  // Escolha livre de categoria (não filtrada por cargo, que é texto livre nesse sistema — filtrar
+  // por cargo seria frágil). Marca quais categorias já têm um envio hoje, pra dar contexto.
+  function checklistCategoryPickerHTML(){
+    const categories = [...state.checklistCategories].sort((a,b)=>a.order-b.order);
+    const sentIds = new Set(state.checklistTodayRows.map(r=>r.category_id));
+    return `
+      <h2 class="section">Checklist de turno — ${brDate(todayISO())}</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin:-4px 0 12px">Qual checklist você vai preencher agora?</p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${categories.map(c=>`
+          <button type="button" class="card" data-selectcategory="${c.id}" style="width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+            <span style="font-weight:600">${esc(c.name)}</span>
+            ${sentIds.has(c.id) ? `<span class="badge aprovado">Já enviado hoje</span>` : ""}
+          </button>`).join("")}
+      </div>
+    `;
+  }
+  function checklistHTML(){
+    if(!state.checklistCategories.length){
+      return `<h2 class="section">Checklist de turno</h2><div class="card"><div class="empty">Nenhuma categoria de checklist cadastrada ainda. Fale com o gestor.</div></div>`;
+    }
+    if(!state.checklistCategory){
+      return checklistCategoryPickerHTML();
+    }
+    const category = state.checklistCategories.find(c=>c.id===state.checklistCategory);
+    const areas = state.checklistAreas.filter(a=>a.category_id===state.checklistCategory).sort((a,b)=>a.order-b.order);
+    if(!areas.length){
+      return `<h2 class="section">Checklist de turno — ${esc(category?category.name:"")}</h2><div class="card"><div class="empty">Nenhuma área/equipamento cadastrado nessa categoria ainda. Fale com o gestor.</div></div><button type="button" class="btn ghost" id="backToCategoriesBtn" style="margin-top:12px">‹ Trocar de categoria</button>`;
+    }
+    const draftByEquip = new Map(state.checklistDraft.map(d=>[d.equipment_id, d]));
+    const visibleIds = state.checklistDraft.map(d=>d.equipment_id);
+    const allSelected = visibleIds.length>0 && visibleIds.every(id=>checklistSelected.has(id));
+    const addedIds = new Set(state.checklistColegas.map(c=>c.id));
+    const q = colegaSearch.trim().toLowerCase();
+    const matches = q ? state.allEmployeesPublic.filter(e=>!addedIds.has(e.id) && e.name.toLowerCase().includes(q)).slice(0,8) : [];
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <h2 class="section" style="margin:0">${esc(category?category.name:"")} — ${brDate(todayISO())}</h2>
+        <button type="button" class="btn ghost small" id="backToCategoriesBtn">‹ Trocar categoria</button>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <h2 class="section" style="margin-bottom:8px">Colegas de turno</h2>
+        <input class="input" id="colegaSearch" placeholder="Buscar colega por nome..." value="${esc(colegaSearch)}" autocomplete="off" />
+        ${q ? `<div class="colega-suggestions">
+          ${matches.length ? matches.map(e=>`<div class="colega-suggestion" data-addcolega="${e.id}">${esc(e.name)}<span class="sub">${esc(e.cargo||"")}</span></div>`).join("") : `<div class="colega-suggestion muted">Nenhum funcionário encontrado</div>`}
+        </div>` : ""}
+        ${state.checklistColegas.length ? `
+        <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+          ${state.checklistColegas.map((c,i)=>`
+            <div class="colega-item">
+              <span class="name">${esc(c.name)}<span class="sub">${esc(c.cargo||"")}</span></span>
+              <button type="button" class="btn ghost small" data-removecolega="${i}">Remover</button>
+            </div>`).join("")}
+        </div>` : `<p style="font-size:11.5px;color:var(--muted);margin:10px 0 0">Nenhum colega adicionado ainda.</p>`}
+      </div>
+      <div class="mass-bar">
+        <label class="row1"><input type="checkbox" id="checkSelectAll" ${allSelected?'checked':''} /> Selecionar todos</label>
+        <div class="eq-status-row">
+          ${CHECKLIST_STATUS_OPTIONS.map(s=>`<button type="button" class="eq-status-btn" data-massstatus="${s}">${s}</button>`).join("")}
+        </div>
+      </div>
+      ${areas.map(a => {
+        const equip = state.checklistEquipment.filter(e=>e.area_id===a.id).sort((x,y)=>x.order-y.order);
+        if(!equip.length) return "";
+        return `
+        <div class="eq-area-title">${esc(a.name)}</div>
+        ${equip.map(eq => {
+          const d = draftByEquip.get(eq.id) || {status:"",obs:"",pendencia:"",acao:""};
+          const showDetails = d.status && d.status!=="✅";
+          return `
+          <div class="eq-card ${checklistSelected.has(eq.id)?'selected':''}">
+            <div class="eq-top">
+              <input type="checkbox" data-eqselect="${eq.id}" ${checklistSelected.has(eq.id)?'checked':''} />
+              <span class="eq-name">${esc(eq.name)}</span>
+            </div>
+            <div class="eq-status-row">
+              ${CHECKLIST_STATUS_OPTIONS.map(s=>`<button type="button" class="eq-status-btn ${d.status===s?'active':''}" data-eqstatus="${eq.id}" data-status="${s}">${s}</button>`).join("")}
+            </div>
+            ${showDetails ? `
+            <div class="eq-details">
+              <textarea placeholder="Observação" data-eqfield="${eq.id}" data-field="obs">${esc(d.obs)}</textarea>
+              <textarea placeholder="Pendência" data-eqfield="${eq.id}" data-field="pendencia">${esc(d.pendencia)}</textarea>
+              <textarea placeholder="Ação realizada" data-eqfield="${eq.id}" data-field="acao">${esc(d.acao)}</textarea>
+            </div>` : ""}
+          </div>`;
+        }).join("")}`;
+      }).join("")}
+      <button class="btn" id="genReportBtn" style="margin-top:14px">Gerar relatório</button>
+      ${state.checklistReport ? `
+      <div class="card" style="margin-top:12px">
+        <div class="report-output">${esc(state.checklistReport)}</div>
+        <button class="btn ghost" id="copyReportBtn" style="margin-top:10px">Copiar relatório</button>
+        <div id="copyMsg" class="msg ok" style="display:none;margin-top:10px">Relatório copiado!</div>
+      </div>` : ""}
+      <h2 class="section" style="margin-top:20px">Checklists anteriores</h2>
+      <div class="card" style="padding:4px 16px">
+        ${state.checklistHistory.length ? state.checklistHistory.map(h => {
+          const counts = {};
+          (h.items||[]).forEach(it=>{ if(it.status) counts[it.status] = (counts[it.status]||0)+1; });
+          const summary = Object.entries(counts).map(([s,n])=>`${s} ${n}`).join("  ") || "sem itens preenchidos";
+          return `<div class="hist-row"><div class="d">${brDate(h.date)}</div><div class="sub">${summary}</div></div>`;
+        }).join("") : `<div class="empty">Nenhum checklist anterior ainda.</div>`}
+      </div>
+    `;
+  }
+  // Monta o rascunho em memória a partir da árvore + do envio de hoje (se já existir). Protege contra
+  // um registro no formato antigo (pré-reforma): se o primeiro item não tem equipment_id, trata como
+  // "sem envio ainda" em vez de tentar casar pelos ids errados.
+  function buildChecklistDraft(){
+    const raw = state.checklistToday && Array.isArray(state.checklistToday.items) ? state.checklistToday.items : [];
+    const validShape = !raw.length || raw[0].equipment_id !== undefined;
+    const byEquipId = new Map(validShape ? raw.map(it=>[it.equipment_id, it]) : []);
+    const areaIds = new Set(state.checklistAreas.filter(a=>a.category_id===state.checklistCategory).map(a=>a.id));
+    state.checklistDraft = state.checklistEquipment.filter(eq=>areaIds.has(eq.area_id)).map(eq => {
+      const saved = byEquipId.get(eq.id);
+      return { equipment_id: eq.id, area_id: eq.area_id, status: saved?.status||"", obs: saved?.obs||"", pendencia: saved?.pendencia||"", acao: saved?.acao||"" };
+    });
+  }
+  function addColega(id){
+    if(state.checklistColegas.some(c=>c.id===id)) return;
+    const e = state.allEmployeesPublic.find(x=>x.id===id);
+    if(!e) return;
+    state.checklistColegas.push({ id: e.id, name: e.name, cargo: e.cargo||"" });
+    colegaSearch = "";
+    saveChecklistDraft();
+    render();
+  }
+  function removeColega(index){
+    state.checklistColegas.splice(index, 1);
+    saveChecklistDraft();
+    render();
+  }
+  function setChecklistStatus(equipId, status){
+    const d = state.checklistDraft.find(x=>x.equipment_id===equipId);
+    if(!d) return;
+    d.status = status;
+    saveChecklistDraft();
+    render();
+  }
+  function applyStatusToSelected(status){
+    state.checklistDraft.forEach(d => { if(checklistSelected.has(d.equipment_id)) d.status = status; });
+    saveChecklistDraft();
+    render();
+  }
+  function scheduleChecklistSave(){
+    clearTimeout(checklistSaveTimer);
+    checklistSaveTimer = setTimeout(saveChecklistDraft, 600);
+  }
+  function flushChecklistSave(){
+    if(checklistSaveTimer){ clearTimeout(checklistSaveTimer); checklistSaveTimer = null; saveChecklistDraft(); }
+  }
+
+  // ---------------- fila de sincronização offline ----------------
+  // Guarda operações que falharam (queda de sinal, chão de fábrica costuma ter zona morta) pra
+  // reenviar sozinho quando a conexão voltar, em vez de perder o que o colaborador digitou. Cada item
+  // é seguro de reenviar mais de uma vez (checklist já é upsert por chave natural; pedido usa um id
+  // gerado no cliente e só insere se ainda não existir — nunca faz UPDATE, que a policy de RLS de
+  // time_off_requests não libera pro colaborador de propósito, só INSERT/SELECT da própria linha).
+  function pendingSyncKey(){ return "pendingSync_" + (state.employee?.id || "anon"); }
+  function loadPendingSyncQueue(){
+    try{ return JSON.parse(localStorage.getItem(pendingSyncKey()) || "[]"); }catch(e){ return []; }
+  }
+  function savePendingSyncQueue(queue){
+    try{ localStorage.setItem(pendingSyncKey(), JSON.stringify(queue)); }catch(e){}
+  }
+  function enqueuePendingSync(kind, payload){
+    const queue = loadPendingSyncQueue();
+    queue.push({ id: uid(), kind, payload, createdAt: new Date().toISOString() });
+    savePendingSyncQueue(queue);
+    cachedPendingSyncCount = queue.length;
+    refreshPendingSyncBadge();
+  }
+  // pendingSyncCount() é lido no template a cada render() (troca de aba, clique, o poll de 30s...) —
+  // cachear em memória evita reabrir e reanalisar o localStorage inteiro toda vez só pra saber um
+  // tamanho, já que loadPendingSyncQueue/savePendingSyncQueue já mantêm isso atualizado nas duas únicas
+  // funções que de fato mudam a fila (enqueuePendingSync e flushPendingQueue).
+  let cachedPendingSyncCount = null;
+  function pendingSyncCount(){
+    if(cachedPendingSyncCount===null) cachedPendingSyncCount = loadPendingSyncQueue().length;
+    return cachedPendingSyncCount;
+  }
+  function refreshPendingSyncBadge(){
+    const el = document.getElementById("pendingSyncBadge");
+    const n = pendingSyncCount();
+    if(el) { if(n) el.textContent = `🔄 ${n}`; else el.remove(); }
+    // se o badge ainda não existe na tela (contador vinha de 0) ele aparece no próximo render()
+    // natural — não força um render aqui pra não atrapalhar quem estiver digitando no checklist.
+  }
+  async function syncOneItem(item){
+    if(item.kind==="checklist"){
+      const { error } = await supabase.from("daily_checklists").upsert(item.payload, {onConflict:"employee_id,date,category_id"});
+      return !error;
+    }
+    if(item.kind==="timeoff"){
+      // reenviar não pode virar UPDATE (RLS não libera isso pro colaborador) — confere se já foi
+      // enviado numa tentativa anterior que só não confirmou a tempo, antes de inserir de novo.
+      const { data: existing, error: selErr } = await supabase.from("time_off_requests").select("id").eq("id", item.payload.id).maybeSingle();
+      if(selErr) return false;
+      if(existing) return true;
+      const { error } = await supabase.from("time_off_requests").insert(item.payload);
+      return !error;
+    }
+    return true;
+  }
+  let flushingPendingSync = false;
+  async function flushPendingQueue(){
+    if(flushingPendingSync || !supabase) return;
+    flushingPendingSync = true;
+    try{
+      let queue = loadPendingSyncQueue();
+      while(queue.length){
+        let ok = false;
+        try{ ok = await syncOneItem(queue[0]); }catch(e){ ok = false; }
+        if(!ok) break; // mantém a ordem — para na primeira falha, tenta o resto na próxima rodada
+        queue = queue.slice(1);
+        savePendingSyncQueue(queue);
+        cachedPendingSyncCount = queue.length;
+      }
+    } finally {
+      flushingPendingSync = false;
+      if(state.view==="app") render();
+    }
+  }
+
+  async function saveChecklistDraft(){
+    if(!state.checklistCategory) return;
+    const category = state.checklistCategories.find(c=>c.id===state.checklistCategory);
+    const items = state.checklistDraft.map(d => {
+      const eq = state.checklistEquipment.find(e=>e.id===d.equipment_id);
+      const area = eq ? state.checklistAreas.find(a=>a.id===eq.area_id) : null;
+      return {
+        equipment_id: d.equipment_id, area_id: d.area_id,
+        equipment_name: eq?eq.name:"", area_name: area?area.name:"",
+        category_id: state.checklistCategory, category_name: category?category.name:"",
+        status: d.status, obs: d.obs, pendencia: d.pendencia, acao: d.acao,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    const row = { employee_id: state.employee.id, date: todayISO(), category_id: state.checklistCategory, items, colegas: state.checklistColegas };
+    state.checklistToday = row; // aplica local na hora — o colaborador não fica esperando a rede pra ver o próprio preenchimento
+    state.checklistTodayRows = [...state.checklistTodayRows.filter(r=>r.category_id!==state.checklistCategory), row];
+    try{
+      const { data, error } = await supabase.from("daily_checklists").upsert(row, {onConflict:"employee_id,date,category_id"}).select().maybeSingle();
+      if(error) throw error;
+      state.checklistToday = data || row;
+      state.checklistTodayRows = [...state.checklistTodayRows.filter(r=>r.category_id!==state.checklistCategory), state.checklistToday];
+    }catch(err){
+      console.error("Falha ao salvar checklist, guardando pra reenviar depois", err);
+      enqueuePendingSync("checklist", row);
+    }
+  }
+  function buildChecklistReportText(){
+    const category = state.checklistCategories.find(c=>c.id===state.checklistCategory);
+    const lines = [];
+    lines.push(`Checklist de turno — ${category?category.name+" — ":""}${brDate(todayISO())}`);
+    lines.push(`Funcionário: ${state.employee.name}`);
+    if(state.checklistColegas.length){
+      const porCargo = {};
+      state.checklistColegas.forEach(c => { (porCargo[c.cargo||"Outro"] = porCargo[c.cargo||"Outro"]||[]).push(c.name); });
+      lines.push("");
+      Object.keys(porCargo).forEach(cargo => lines.push(`${cargo}: ${porCargo[cargo].join(" / ")}`));
+    }
+    lines.push("");
+    lines.push("LEGENDA:");
+    lines.push("✅ Conforme   ❌ Fora de funcionamento   ⚠️ Com pendência   🚧 Bloqueado   🚨 Atenção");
+    const areas = state.checklistAreas.filter(a=>a.category_id===state.checklistCategory).sort((a,b)=>a.order-b.order);
+    const draftByEquip = new Map(state.checklistDraft.map(d=>[d.equipment_id,d]));
+    const pendencias = [];
+    areas.forEach(a => {
+      const equip = state.checklistEquipment.filter(e=>e.area_id===a.id).sort((x,y)=>x.order-y.order);
+      const withContent = equip.filter(eq => { const d=draftByEquip.get(eq.id); return d && (d.status||d.obs||d.pendencia||d.acao); });
+      if(!withContent.length) return;
+      lines.push(""); lines.push(a.name);
+      withContent.forEach(eq => {
+        const d = draftByEquip.get(eq.id);
+        let line = `- ${eq.name}`;
+        if(d.status) line += ` ${d.status}`;
+        if(d.obs) line += ` ${d.obs}`;
+        lines.push(line);
+        if(d.pendencia){ lines.push(`  Pendência: ${d.pendencia}`); pendencias.push(`${a.name} - ${eq.name}: ${d.pendencia}`); }
+        if(d.acao) lines.push(`  Ação realizada: ${d.acao}`);
+      });
+    });
+    if(pendencias.length){
+      lines.push(""); lines.push("PENDÊNCIAS:");
+      pendencias.forEach((p,i)=>lines.push(`🚨 Pendência ${String(i+1).padStart(2,"0")}: ${p}`));
+    }
+    return lines.join("\n").trim();
+  }
+  function copyChecklistReport(){
+    const texto = state.checklistReport;
+    if(!texto) return;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(texto).then(showCopyMsg).catch(() => copyFallback(texto));
+    } else {
+      copyFallback(texto);
+    }
+  }
+  function copyFallback(texto){
+    const area = document.createElement("textarea");
+    area.value = texto;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed"; area.style.top = "0"; area.style.left = "0"; area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.focus(); area.select();
+    try{ document.execCommand("copy"); showCopyMsg(); }
+    catch(e){ alert("Não consegui copiar automaticamente. Segure o dedo no texto do relatório e copie manualmente."); }
+    document.body.removeChild(area);
+  }
+  function showCopyMsg(){
+    const msg = $("#copyMsg");
+    if(!msg) return;
+    msg.style.display = "block";
+    setTimeout(() => { msg.style.display = "none"; }, 2200);
+  }
+
+  // ---------------- modal de solicitação (falta/folga/férias) ----------------
+  // Menu de escolha do tipo de solicitação — o clique num dia da escala não abre mais isso direto
+  // (virou openDayStatusModal, só informativo); a solicitação agora começa sempre por aqui.
+  const NEW_REQUEST_TYPES = [
+    { type:"folga", ic:"🌴", lbl:"Solicitar folga", sub:"Pede uma folga numa data específica" },
+    { type:"atraso", ic:"⏰", lbl:"Reportar atraso", sub:"Avisa o gestor sobre um atraso, com motivo" },
+    { type:"falta", ic:"🚫", lbl:"Reportar falta", sub:"Avisa o gestor sobre uma falta, com motivo" },
+    { type:"solicitacao_geral", ic:"📝", lbl:"Outra solicitação", sub:"Crachá, dúvida, ou qualquer outro assunto" },
+  ];
+  function openNewRequestTypeMenu(){
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>Nova solicitação</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            ${NEW_REQUEST_TYPES.map(t=>`
+              <button type="button" class="card" data-reqtypepick="${t.type}" style="width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;display:flex;align-items:center;gap:10px">
+                <span style="font-size:20px">${t.ic}</span>
+                <span><span style="font-weight:600;display:block">${t.lbl}</span><span style="font-size:11.5px;color:var(--muted)">${t.sub}</span></span>
+              </button>`).join("")}
+          </div>
+          <div class="modal-actions"><button class="btn ghost" id="cancelModal" type="button">Cancelar</button></div>
+        </div>
+      </div>
+    `;
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+    document.querySelectorAll("[data-reqtypepick]").forEach(el => el.addEventListener("click", () => {
+      const type = el.dataset.reqtypepick;
+      close();
+      if(type==="solicitacao_geral") openGeneralRequestModal();
+      else openRequestModal(type);
+    }));
+  }
+  const REQUEST_TYPE_META = {
+    folga: { title:"Solicitar folga", reasonLabel:"Motivo (opcional)", reasonPlaceholder:"Ex: compromisso pessoal", reasonRequired:false },
+    atraso: { title:"Reportar atraso", reasonLabel:"Motivo do atraso", reasonPlaceholder:"Ex: atraso no transporte", reasonRequired:true },
+    falta: { title:"Reportar falta", reasonLabel:"Motivo da falta", reasonPlaceholder:"Ex: consulta médica", reasonRequired:true },
+  };
+  // Falta/folga/atraso: pede a data aqui dentro (input nativo) — antes vinha fixa do dia clicado na
+  // escala, mas esse clique agora só mostra o status do dia (ver openDayStatusModal).
+  function openRequestModal(type){
+    const meta = REQUEST_TYPE_META[type];
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>${meta.title}</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          <div class="field"><label>Data</label><input type="date" class="input" id="req_date" value="${todayISO()}" /></div>
+          <div class="field"><label>${meta.reasonLabel}</label><textarea class="input" id="req_reason" style="min-height:80px" placeholder="${meta.reasonPlaceholder}"></textarea></div>
+          <div class="modal-actions">
+            <button class="btn ghost" id="cancelModal" type="button">Cancelar</button>
+            <button class="btn" id="submitReq" type="button">Enviar pedido</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+    $("#submitReq").addEventListener("click", async () => {
+      const dateISO = $("#req_date").value;
+      if(!dateISO){ alert("Selecione uma data."); return; }
+      const reasonEl = $("#req_reason");
+      const reason = reasonEl ? reasonEl.value.trim() : "";
+      if(meta.reasonRequired && !reason){ alert("Informe o motivo."); return; }
+      const payload = {
+        id: uid(), employee_id: state.employee.id, type, date_start: dateISO, date_end: dateISO, reason,
+        status: "pendente", created_at: new Date().toISOString(),
+      };
+      close();
+      state.myRequests = [payload, ...state.myRequests];
+      render();
+      try{
+        const { error } = await supabase.from("time_off_requests").insert(payload);
+        if(error) throw error;
+      }catch(err){
+        enqueuePendingSync("timeoff", payload);
+        alert("Sem conexão no momento — seu pedido foi guardado e será enviado sozinho assim que a internet voltar.");
+        render();
+      }
+    });
+  }
+  // Toque num dia da escala — mostra a situação real daquele dia (não abre mais pedido de falta/folga,
+  // que agora começa sempre pelo botão "+ Nova solicitação").
+  function openDayStatusModal(dateISO){
+    const shift = shiftForDate(dateISO);
+    const info = scheduledDayInfo(state.employee, shift, state.holidays, state.attendance, dateISO);
+    const status = info.attendance ? attendanceStatus(info.attendance) : null;
+    let body;
+    if(info.holiday){
+      body = `<div class="field"><label>Situação</label><div>🎉 Feriado — ${esc(info.holiday.name)}</div></div>`;
+    } else if(status==="presente"){
+      body = `
+        <div class="field"><label>Situação</label><div>✅ Trabalhou</div></div>
+        <div class="field"><label>Turno</label><div>${esc(info.attendance.turno || (shift?shift.name:"—"))}</div></div>
+        ${shift ? `<div class="field"><label>Horário do turno</label><div>${esc(shift.start_time)} às ${esc(shift.end_time)}</div></div>` : ""}
+        <div class="field"><label>Horas registradas</label><div>${info.attendance.hours}h</div></div>
+        ${info.attendance.atraso ? `<div class="field"><label>Observação</label><div>⏰ Chegou atrasado</div></div>` : ""}
+        ${info.attendance.justification ? `<div class="field"><label>Anotação</label><div style="white-space:pre-wrap">${esc(info.attendance.justification)}</div></div>` : ""}
+      `;
+    } else if(status==="falta"){
+      body = `
+        <div class="field"><label>Situação</label><div>❌ Faltou</div></div>
+        ${info.attendance.atestado ? `<div class="field"><label>Atestado</label><div>Sim</div></div>` : ""}
+        ${info.attendance.justification ? `<div class="field"><label>Motivo</label><div style="white-space:pre-wrap">${esc(info.attendance.justification)}</div></div>` : ""}
+      `;
+    } else if(status==="ferias"){
+      body = `<div class="field"><label>Situação</label><div>🏖️ Férias</div></div>`;
+    } else if(status==="folga"){
+      body = `<div class="field"><label>Situação</label><div>😴 Folga (registrada)</div></div>`;
+    } else if(info.scheduled && dateISO >= todayISO()){
+      body = `
+        <div class="field"><label>Situação</label><div>📅 Previsto trabalhar</div></div>
+        <div class="field"><label>Turno</label><div>${esc(shift.name)}</div></div>
+        <div class="field"><label>Horário previsto</label><div>${esc(shift.start_time)} às ${esc(shift.end_time)}</div></div>
+      `;
+    } else if(info.scheduled){
+      body = `<div class="field"><label>Situação</label><div>⚠️ Deveria ter trabalhado, mas ainda não tem apontamento registrado.</div></div>`;
+    } else {
+      body = `<div class="field"><label>Situação</label><div>😴 Folga</div></div>`;
+    }
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>${brDate(dateISO)}</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          ${body}
+          <div class="modal-actions"><button class="btn ghost" id="cancelModal" type="button">Fechar</button></div>
+        </div>
+      </div>
+    `;
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+  }
+
+  // ---------------- solicitação geral (título+descrição livre, sem data) ----------------
+  function openGeneralRequestModal(){
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>Nova solicitação geral</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          <div class="field"><label>Título</label><input class="input" id="gr_title" placeholder="Ex: Troca de EPI, dúvida sobre benefício..." /></div>
+          <div class="field" style="margin-top:10px"><label>Descrição</label><textarea class="input" id="gr_desc" style="min-height:100px" placeholder="Descreva sua solicitação..."></textarea></div>
+          <div class="modal-actions">
+            <button class="btn ghost" id="cancelModal" type="button">Cancelar</button>
+            <button class="btn" id="submitGeneralReq" type="button">Enviar solicitação</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+    $("#submitGeneralReq").addEventListener("click", async () => {
+      const title = $("#gr_title").value.trim();
+      const reason = $("#gr_desc").value.trim();
+      if(!title){ alert("Informe um título pra sua solicitação."); return; }
+      const today = todayISO();
+      const payload = {
+        id: uid(), employee_id: state.employee.id, type: "solicitacao_geral", title, reason,
+        date_start: today, date_end: today, status: "pendente", created_at: new Date().toISOString(),
+      };
+      close();
+      state.myRequests = [payload, ...state.myRequests];
+      render();
+      try{
+        const { error } = await supabase.from("time_off_requests").insert(payload);
+        if(error) throw error;
+      }catch(err){
+        enqueuePendingSync("timeoff", payload);
+        alert("Sem conexão no momento — sua solicitação foi guardada e será enviada sozinha assim que a internet voltar.");
+        render();
+      }
+    });
+  }
+  // Responder ou finalizar uma solicitação geral já respondida pelo gestor — só essas duas colunas
+  // podem ser alteradas pelo colaborador (RLS+trigger no banco garantem isso mesmo se alguém tentar
+  // forçar outra coisa pela API direto).
+  async function submitGeneralRequestReply(requestId, replyText){
+    if(!replyText.trim()) return;
+    const req = state.myRequests.find(r=>r.id===requestId);
+    if(req) req.colaborador_reply = replyText.trim();
+    replyOpenForRequestId = null;
+    render();
+    try{
+      const { error } = await supabase.from("time_off_requests").update({ colaborador_reply: replyText.trim() }).eq("id", requestId);
+      if(error) throw error;
+    }catch(err){ alert("Não consegui enviar sua resposta agora — tente de novo em instantes: "+err.message); }
+  }
+  async function finalizeGeneralRequest(requestId){
+    if(!confirm("Finalizar essa solicitação? Depois disso não dá mais pra responder.")) return;
+    const finalizadoEm = new Date().toISOString();
+    const req = state.myRequests.find(r=>r.id===requestId);
+    if(req) req.finalizado_em = finalizadoEm;
+    render();
+    try{
+      const { error } = await supabase.from("time_off_requests").update({ finalizado_em: finalizadoEm }).eq("id", requestId);
+      if(error) throw error;
+    }catch(err){ alert("Não consegui finalizar agora — tente de novo em instantes: "+err.message); }
+  }
+  // Mesma checagem de "2 dias sem ação" do painel do gestor — cobre o caso do colaborador nunca mais
+  // abrir o portal depois que o gestor respondeu (o painel também faz essa varredura no próprio boot).
+  async function autoFinalizeStaleGeneralRequests(){
+    const twoDaysAgo = new Date(Date.now() - 2*86400000).toISOString();
+    const stale = state.myRequests.filter(r =>
+      r.type==="solicitacao_geral" && r.status!=="pendente" && !r.finalizado_em && r.admin_responded_at && r.admin_responded_at < twoDaysAgo
+    );
+    if(!stale.length) return;
+    const finalizadoEm = new Date().toISOString();
+    await Promise.all(stale.map(async r => {
+      const { error } = await supabase.from("time_off_requests").update({ finalizado_em: finalizadoEm }).eq("id", r.id);
+      if(!error) r.finalizado_em = finalizadoEm;
+    }));
+  }
+
+  // ---------------- férias (aba própria, fora do modal de solicitação) ----------------
+  function openFeriasRequestModal(){
+    let selectedDate = todayISO();
+    let untilDate = todayISO();
+    let rangeAnchor = null;
+    let pickerMonth = todayISO().slice(0,7);
+
+    function pickerHTML(){
+      const [y,m] = pickerMonth.split("-").map(Number);
+      const daysInMonth = new Date(y,m,0).getDate();
+      const firstDow = new Date(y,m-1,1).getDay();
+      const cells = [];
+      for(let i=0;i<firstDow;i++) cells.push(null);
+      for(let d=1; d<=daysInMonth; d++) cells.push(`${pickerMonth}-${String(d).padStart(2,"0")}`);
+      const monthLabel = new Date(y,m-1,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+      return `
+        <div class="cal-head"><button class="iconbtn" id="reqCalPrev" type="button">‹</button><b>${monthLabel}</b><button class="iconbtn" id="reqCalNext" type="button">›</button></div>
+        <div class="cal-grid">
+          ${WEEKDAY_LABELS.map(w=>`<div class="dow">${w}</div>`).join("")}
+          ${cells.map(d => {
+            if(!d) return `<div></div>`;
+            const worked = state.attendance.some(a=>a.date===d && attendanceStatus(a)==="presente");
+            if(worked){
+              return `<div title="Já registrado como trabalhado — não dá pra pedir férias nesse dia" style="opacity:.35;cursor:not-allowed">${Number(d.slice(8,10))}</div>`;
+            }
+            const inRange = d>=selectedDate && d<=untilDate;
+            const isStart = d===selectedDate;
+            const holiday = findHoliday(state.holidays, d);
+            const ring = isStart ? "box-shadow:0 0 0 2px var(--brand-light) inset;" : (inRange?"box-shadow:0 0 0 1px var(--brand-light) inset;":"");
+            const bg = inRange ? "rgba(11,107,51,.3)" : (holiday?"rgba(167,139,250,.18)":"transparent");
+            return `<div class="day" data-reqday="${d}" title="${holiday?esc(holiday.name):''}" style="background:${bg};${ring}cursor:pointer">${Number(d.slice(8,10))}</div>`;
+          }).join("")}
+        </div>
+        <p style="font-size:11.5px;color:var(--muted);margin:10px 0 0">De ${brDate(selectedDate)} até ${brDate(untilDate)}</p>
+        <div class="field" style="margin-top:10px"><label>Motivo (opcional)</label><textarea class="input" id="req_reason" style="min-height:60px"></textarea></div>
+      `;
+    }
+    function renderModal(){
+      $("#modalRoot").innerHTML = `
+        <div class="modal-backdrop" id="backdrop">
+          <div class="modal">
+            <div class="modal-head"><h3>Solicitar férias</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+            ${pickerHTML()}
+            <div class="modal-actions">
+              <button class="btn ghost" id="cancelModal" type="button">Cancelar</button>
+              <button class="btn" id="submitReq" type="button">Enviar pedido</button>
+            </div>
+          </div>
+        </div>
+      `;
+      wireModal();
+    }
+    function wireModal(){
+      const close = () => { $("#modalRoot").innerHTML = ""; };
+      $("#closeModal").addEventListener("click", close);
+      $("#cancelModal").addEventListener("click", close);
+      $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+      $("#reqCalPrev").addEventListener("click", () => { pickerMonth = addMonths(pickerMonth,-1); renderModal(); });
+      $("#reqCalNext").addEventListener("click", () => { pickerMonth = addMonths(pickerMonth,1); renderModal(); });
+      document.querySelectorAll("[data-reqday]").forEach(el => el.addEventListener("click", () => {
+        const d = el.dataset.reqday;
+        if(!rangeAnchor){ selectedDate = d; untilDate = d; rangeAnchor = d; }
+        else{
+          if(d>=rangeAnchor){ selectedDate = rangeAnchor; untilDate = d; } else { selectedDate = d; untilDate = rangeAnchor; }
+          rangeAnchor = null;
+        }
+        renderModal();
+      }));
+      $("#submitReq").addEventListener("click", async () => {
+        const reason = $("#req_reason").value.trim();
+        const days = Math.round((new Date(untilDate)-new Date(selectedDate))/86400000)+1;
+        if(days>120){ alert("Esse intervalo tem mais de 120 dias — fale direto com o gestor pra períodos tão longos."); return; }
+        const payload = {
+          id: uid(), employee_id: state.employee.id, type:"ferias", date_start: selectedDate, date_end: untilDate, reason,
+          status: "pendente", created_at: new Date().toISOString(),
+        };
+        close();
+        state.myRequests = [payload, ...state.myRequests];
+        render();
+        try{
+          const { error } = await supabase.from("time_off_requests").insert(payload);
+          if(error) throw error;
+        }catch(err){
+          enqueuePendingSync("timeoff", payload);
+          alert("Sem conexão no momento — seu pedido foi guardado e será enviado sozinho assim que a internet voltar.");
+          render();
+        }
+      });
+    }
+    renderModal();
+  }
+  function feriasHTML(){
+    const ferias = state.myRequests.filter(r=>r.type==="ferias");
+    const ativa = ferias.find(r => (r.status==="pendente"||r.status==="aprovado") && r.date_end>=todayISO());
+    return `
+      <h2 class="section">Minhas férias</h2>
+      ${ativa ? `
+      <div class="card">
+        <div class="req-row" style="border-bottom:none;padding-top:0">
+          <div class="d">${brDate(ativa.date_start)} a ${brDate(ativa.date_end)}</div>
+          ${ativa.reason ? `<div class="sub">${esc(ativa.reason)}</div>` : ""}
+          <span class="badge ${ativa.status}" style="margin-top:6px;display:inline-block">${REQUEST_STATUS_LABEL[ativa.status]}</span>
+        </div>
+        <p style="font-size:11.5px;color:var(--muted);margin:10px 0 0">Você já tem um período ${ativa.status==="pendente"?"pendente":"aprovado"} — não dá pra pedir outro enquanto esse não passar.</p>
+      </div>` : `
+      <div class="card">
+        <p style="margin-top:0;font-size:13px;color:var(--muted)">Você não tem nenhuma férias pendente ou aprovada no momento.</p>
+        <button class="btn" id="newFeriasBtn">+ Solicitar férias</button>
+      </div>`}
+      ${ferias.length ? `
+      <h2 class="section" style="margin-top:20px">Histórico</h2>
+      <div class="card" style="padding:4px 16px">
+        ${ferias.map(r => `
+          <div class="req-row">
+            <div class="d">${brDate(r.date_start)} a ${brDate(r.date_end)}</div>
+            ${r.reason ? `<div class="sub">${esc(r.reason)}</div>` : ""}
+            <span class="badge ${r.status}" style="margin-top:6px;display:inline-block">${REQUEST_STATUS_LABEL[r.status]}</span>
+          </div>`).join("")}
+      </div>` : ""}
+    `;
+  }
+
+  // ---------------- data loading ----------------
+  async function loadEmployeeData(){
+    const [{data: shifts}, {data: holidays}, {data: attendance}, {data: myRequests}, {data: checklistCategories}, {data: checklistAreas}, {data: checklistEquipment}, {data: allEmployeesPublic}, {data: checklistHistory}, {data: checklistTodayRows}, {data: notifications}, {data: dssToday}, {data: shiftHistory}] = await Promise.all([
+      supabase.from("shifts").select("*"),
+      supabase.from("holidays").select("*"),
+      supabase.from("attendance").select("*").eq("employee_id", state.employee.id),
+      supabase.from("time_off_requests").select("*").eq("employee_id", state.employee.id).order("created_at",{ascending:false}),
+      supabase.from("checklist_categories").select("*").order("order"),
+      supabase.from("checklist_areas").select("*").order("order"),
+      supabase.from("checklist_equipment").select("*").order("order"),
+      supabase.rpc("list_public_employees"),
+      supabase.from("daily_checklists").select("*").eq("employee_id", state.employee.id).lt("date", todayISO()).order("date",{ascending:false}).limit(14),
+      supabase.from("daily_checklists").select("*").eq("employee_id", state.employee.id).eq("date", todayISO()),
+      supabase.from("notifications").select("*").eq("employee_id", state.employee.id).order("created_at",{ascending:false}),
+      supabase.from("dss_topics").select("*").eq("date", todayISO()).maybeSingle(),
+      supabase.from("employee_shift_history").select("*").eq("employee_id", state.employee.id).order("effective_from"),
+    ]);
+    state.shifts = shifts || [];
+    state.holidays = holidays || [];
+    state.attendance = attendance || [];
+    state.myRequests = myRequests || [];
+    state.checklistCategories = checklistCategories || [];
+    state.checklistAreas = checklistAreas || [];
+    state.checklistEquipment = checklistEquipment || [];
+    state.allEmployeesPublic = (allEmployeesPublic || []).filter(e=>e.id!==state.employee.id);
+    state.checklistHistory = checklistHistory || [];
+    state.checklistTodayRows = checklistTodayRows || [];
+    state.notifications = notifications || [];
+    state.dssToday = dssToday || null;
+    state.shiftHistory = (shiftHistory || []).map(r => ({ shiftId: r.shift_id, effectiveFrom: r.effective_from }));
+    state.shift = state.shifts.find(s=>s.id===state.employee.shift_id) || null;
+    if(state.employee.company_id){
+      const { data: company } = await supabase.from("companies").select("*").eq("id", state.employee.company_id).maybeSingle();
+      state.company = company || null;
+    }
+    // checklistToday/checklistDraft/checklistColegas dependem da categoria escolhida — montados em
+    // selectChecklistCategory(), já que nenhuma categoria está selecionada logo após o login.
+  }
+  // Versão enxuta de loadEmployeeData, só com o que pode mudar de fora (ação do gestor) enquanto o
+  // colaborador está com o app aberto — usada pelo poll de 30s. shifts/holidays/checklist_categories/
+  // checklist_areas/checklist_equipment/allEmployeesPublic/companies praticamente nunca mudam no meio
+  // de um turno, então refetchar tudo de novo a cada 30s só gastaria dado móvel/bateria à toa.
+  async function loadLiveUpdates(){
+    const [{data: myRequests}, {data: notifications}, {data: dssToday}, {data: attendance}, {data: shiftHistory}] = await Promise.all([
+      supabase.from("time_off_requests").select("*").eq("employee_id", state.employee.id).order("created_at",{ascending:false}),
+      supabase.from("notifications").select("*").eq("employee_id", state.employee.id).order("created_at",{ascending:false}),
+      supabase.from("dss_topics").select("*").eq("date", todayISO()).maybeSingle(),
+      supabase.from("attendance").select("*").eq("employee_id", state.employee.id),
+      supabase.from("employee_shift_history").select("*").eq("employee_id", state.employee.id).order("effective_from"),
+    ]);
+    state.myRequests = myRequests || [];
+    state.notifications = notifications || [];
+    state.dssToday = dssToday || null;
+    state.attendance = attendance || [];
+    // Se o gestor trocou o turno do colaborador com o app aberto, isso é o que faz a escala/calendário
+    // refletir a troca sem precisar relogar — state.shift (turno "de hoje", usado só de rótulo no
+    // cabeçalho) fica intencionalmente parado até o próximo login, já que shiftForDate() (usada no
+    // calendário/apontamentos) resolve pelo histórico, não por state.shift.
+    state.shiftHistory = (shiftHistory || []).map(r => ({ shiftId: r.shift_id, effectiveFrom: r.effective_from }));
+  }
+  // Escolhe a categoria de checklist ativa nesta sessão e monta o rascunho a partir do envio de
+  // hoje PRA ESSA categoria, se já existir (cada categoria tem sua própria linha em daily_checklists).
+  function selectChecklistCategory(categoryId){
+    state.checklistCategory = categoryId;
+    const today = state.checklistTodayRows.find(r=>r.category_id===categoryId) || null;
+    state.checklistToday = today;
+    state.checklistColegas = (today && Array.isArray(today.colegas)) ? today.colegas : [];
+    buildChecklistDraft();
+    render();
+  }
+
+  async function bootstrap(){
+    if(!configured){ state.view = "unconfigured"; render(); return; }
+    const { data: { session } } = await supabase.auth.getSession();
+    if(!session){ state.view = "auth"; render(); return; }
+    state.session = session;
+    await afterLogin();
+  }
+
+  async function afterLogin(){
+    state.view = "loading"; render();
+    const { data: profile } = await supabase.from("profiles").select("*").eq("id", state.session.user.id).maybeSingle();
+    state.profile = profile;
+    if(!profile || !profile.employee_id){ state.view = "unlinked"; render(); return; }
+    const { data: employee } = await supabase.from("employees").select("*").eq("id", profile.employee_id).maybeSingle();
+    if(!employee){ state.view = "unlinked"; render(); return; }
+    state.employee = employee;
+    await loadEmployeeData();
+    state.view = "app"; state.tab = "escala";
+    render();
+    flushPendingQueue(); // pode ter sobrado fila de uma sessão offline anterior
+    autoFinalizeStaleGeneralRequests();
+  }
+
+  // ---------------- wiring ----------------
+  function wireView(){
+    if(state.view==="auth"){
+      document.querySelectorAll("[data-authtab]").forEach(el => el.addEventListener("click", () => {
+        state.authMode = el.dataset.authtab; state.authError=""; state.authInfo=""; render();
+      }));
+      $("#auth_submit").addEventListener("click", onAuthSubmit);
+      return;
+    }
+    if(state.view==="unlinked"){
+      $("#unlinked_logout").addEventListener("click", async () => { await supabase.auth.signOut(); state.view="auth"; render(); });
+      return;
+    }
+    if(state.view!=="app") return;
+
+    const installBtn = $("#installAppBtn");
+    if(installBtn) installBtn.addEventListener("click", async () => {
+      if(!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      if(choice.outcome==="accepted") installDismissed = true;
+      render();
+    });
+    const installHint = $("#installAppHint");
+    if(installHint) installHint.addEventListener("click", () => {
+      alert('Pra instalar no iPhone: toque no ícone de Compartilhar (o quadrado com a seta pra cima) e escolha "Adicionar à Tela de Início".');
+    });
+    const pushBtn = $("#pushAppBtn");
+    if(pushBtn) pushBtn.addEventListener("click", enablePushNotifications);
+    const bellBtn = $("#bellBtn");
+    if(bellBtn) bellBtn.addEventListener("click", openNotificationsModal);
+    const changePasswordBtn = $("#changePasswordBtn");
+    if(changePasswordBtn) changePasswordBtn.addEventListener("click", openChangePasswordModal);
+
+    document.querySelectorAll("[data-tab]").forEach(el => el.addEventListener("click", async () => {
+      if(el.dataset.tab==="logout"){ await supabase.auth.signOut(); state = {...state, view:"auth", session:null, profile:null, employee:null}; render(); return; }
+      state.tab = el.dataset.tab; render();
+    }));
+
+    if(state.tab==="escala"){
+      $("#calPrev").addEventListener("click", () => { state.calMonth = addMonths(state.calMonth,-1); render(); });
+      $("#calNext").addEventListener("click", () => { state.calMonth = addMonths(state.calMonth,1); render(); });
+      document.querySelectorAll("[data-calday]").forEach(el => el.addEventListener("click", () => openDayStatusModal(el.dataset.calday)));
+      localStorage.setItem("lastSeenRequests_"+state.employee.id, new Date().toISOString());
+      const dssCard = $("#dssTodayCard");
+      if(dssCard) dssCard.addEventListener("click", () => { state.dssExpanded = !state.dssExpanded; render(); });
+      const newRequestBtn = $("#newRequestBtn");
+      if(newRequestBtn) newRequestBtn.addEventListener("click", openNewRequestTypeMenu);
+      document.querySelectorAll("[data-toggle-reply]").forEach(el => el.addEventListener("click", () => {
+        replyOpenForRequestId = replyOpenForRequestId===el.dataset.toggleReply ? null : el.dataset.toggleReply;
+        render();
+      }));
+      document.querySelectorAll("[data-send-reply]").forEach(el => el.addEventListener("click", () => {
+        const box = $("#reply_"+el.dataset.sendReply);
+        submitGeneralRequestReply(el.dataset.sendReply, box ? box.value : "");
+      }));
+      document.querySelectorAll("[data-finalize-req]").forEach(el => el.addEventListener("click", () => finalizeGeneralRequest(el.dataset.finalizeReq)));
+    }
+    if(state.tab==="ferias"){
+      const newFeriasBtn = $("#newFeriasBtn");
+      if(newFeriasBtn) newFeriasBtn.addEventListener("click", openFeriasRequestModal);
+      localStorage.setItem("lastSeenFerias_"+state.employee.id, new Date().toISOString());
+    }
+    if(state.tab==="checklist"){
+      document.querySelectorAll("[data-selectcategory]").forEach(el => el.addEventListener("click", () => selectChecklistCategory(el.dataset.selectcategory)));
+      const backBtn = $("#backToCategoriesBtn");
+      if(backBtn) backBtn.addEventListener("click", () => { state.checklistCategory = null; render(); });
+      const colegaInput = $("#colegaSearch");
+      if(colegaInput) colegaInput.addEventListener("input", () => {
+        colegaSearch = colegaInput.value;
+        render();
+        const el = $("#colegaSearch");
+        if(el){ el.focus(); const v = el.value; el.setSelectionRange(v.length, v.length); }
+      });
+      document.querySelectorAll("[data-addcolega]").forEach(el => el.addEventListener("click", () => addColega(el.dataset.addcolega)));
+      document.querySelectorAll("[data-removecolega]").forEach(el => el.addEventListener("click", () => removeColega(Number(el.dataset.removecolega))));
+      const selectAll = $("#checkSelectAll");
+      if(selectAll) selectAll.addEventListener("change", () => {
+        const ids = state.checklistDraft.map(d=>d.equipment_id);
+        if(selectAll.checked) ids.forEach(id=>checklistSelected.add(id)); else checklistSelected.clear();
+        render();
+      });
+      document.querySelectorAll("[data-eqselect]").forEach(el => el.addEventListener("change", () => {
+        if(el.checked) checklistSelected.add(el.dataset.eqselect); else checklistSelected.delete(el.dataset.eqselect);
+        render();
+      }));
+      document.querySelectorAll("[data-massstatus]").forEach(el => el.addEventListener("click", () => {
+        if(!checklistSelected.size){ alert("Selecione ao menos um equipamento (marque as caixinhas)."); return; }
+        applyStatusToSelected(el.dataset.massstatus);
+      }));
+      document.querySelectorAll("[data-eqstatus]").forEach(el => el.addEventListener("click", () => setChecklistStatus(el.dataset.eqstatus, el.dataset.status)));
+      document.querySelectorAll("[data-eqfield]").forEach(el => el.addEventListener("input", () => {
+        const d = state.checklistDraft.find(x=>x.equipment_id===el.dataset.eqfield);
+        if(d) d[el.dataset.field] = el.value;
+        scheduleChecklistSave();
+      }));
+      const genBtn = $("#genReportBtn");
+      if(genBtn) genBtn.addEventListener("click", () => { state.checklistReport = buildChecklistReportText(); render(); });
+      const copyBtn = $("#copyReportBtn");
+      if(copyBtn) copyBtn.addEventListener("click", copyChecklistReport);
+    }
+  }
+
+  async function onAuthSubmit(){
+    const email = $("#auth_email").value.trim();
+    const password = $("#auth_password").value;
+    state.authError = ""; state.authInfo = "";
+    if(!email || !password){ state.authError = "Preencha e-mail e senha."; render(); return; }
+    if(state.authMode==="signup"){
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if(error){ state.authError = error.message; render(); return; }
+      if(!data.session){
+        state.authMode = "login";
+        state.authInfo = "Conta criada. Confira seu e-mail pra confirmar (se pedido), depois entre normalmente.";
+        render();
+        return;
+      }
+      state.session = data.session;
+      await afterLogin();
+    } else {
+      // Falha ao checar bloqueio não deve travar quem está tentando logar normalmente — segue tentando.
+      try{
+        const { data: locked } = await supabase.rpc("is_login_locked", { p_email: email });
+        if(locked){
+          state.authError = "Conta bloqueada após 3 tentativas incorretas. Fale com o gestor pra resetar sua senha.";
+          render();
+          return;
+        }
+      }catch(err){}
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if(error){
+        try{
+          const { data: result } = await supabase.rpc("record_failed_login", { p_email: email });
+          const r = Array.isArray(result) ? result[0] : result;
+          if(r && r.locked){
+            state.authError = "Conta bloqueada após 3 tentativas incorretas. Fale com o gestor pra resetar sua senha.";
+          } else if(r && r.attempts>0){
+            state.authError = `Senha incorreta. Mais ${Math.max(0,3-r.attempts)} tentativa(s) antes do bloqueio.`;
+          } else {
+            state.authError = "E-mail ou senha inválidos.";
+          }
+        }catch(err){ state.authError = "E-mail ou senha inválidos."; }
+        render();
+        return;
+      }
+      // Fire-and-forget (não atrasa o login por causa disso) — try/catch em vez de encadear .catch()
+      // direto, já que nem todo objeto retornado por .rpc() garante esse método antes de ser aguardado.
+      (async () => { try{ await supabase.rpc("reset_failed_login", { p_email: email }); }catch(err){} })();
+      state.session = data.session;
+      await afterLogin();
+    }
+  }
+
+  // Celular pode ser minimizado no meio do preenchimento do checklist (chão de fábrica) — força salvar
+  // o que já foi digitado (debounced) assim que a aba perde foco, em vez de arriscar perder o texto.
+  document.addEventListener("visibilitychange", () => { if(document.visibilityState==="hidden") flushChecklistSave(); });
+  window.addEventListener("pagehide", flushChecklistSave);
+
+  // PWA: guarda o prompt de instalação do Android/Chrome pra disparar no clique do botão (não pode
+  // ser mostrado direto no evento) e some com o botão depois de instalado.
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    if(state.view==="app") render();
+  });
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null; installDismissed = true;
+    if(state.view==="app") render();
+  });
+  if("serviceWorker" in navigator){
+    window.addEventListener("load", () => { navigator.serviceWorker.register("./sw.js").catch(()=>{}); });
+  }
+
+  // Reenvia a fila de sincronização offline quando a conexão volta — o evento "online" nem sempre
+  // dispara de forma confiável em celular, por isso também tenta de tempos em tempos enquanto a fila
+  // não estiver vazia.
+  window.addEventListener("online", flushPendingQueue);
+  setInterval(() => { if(pendingSyncCount()>0) flushPendingQueue(); }, 30000);
+
+  // Sem isso, status de solicitação/notificações/DSS só atualizavam num reload manual — busca de novo
+  // em segundo plano a cada 30s. Pula a re-renderização (mas mantém os dados buscados pra próxima vez)
+  // se o colaborador estiver com um campo em foco ou um modal aberto, pra não interromper o que ele
+  // estiver digitando.
+  setInterval(async () => {
+    if(state.view!=="app") return;
+    const activeTag = document.activeElement && document.activeElement.tagName;
+    if(activeTag==="INPUT" || activeTag==="TEXTAREA" || activeTag==="SELECT") return;
+    if($("#modalRoot") && $("#modalRoot").innerHTML.trim()) return;
+    await loadLiveUpdates();
+    await autoFinalizeStaleGeneralRequests();
+    render();
+  }, 30000);
+
+  bootstrap();
+})();
+</script>
+</body>
+</html>
