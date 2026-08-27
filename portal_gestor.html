@@ -786,6 +786,10 @@
               ${state.shifts.map(s=>`<option value="${s.id}" ${s.id===f.shiftId?'selected':''}>${esc(s.name)}</option>`).join("")}
             </select>
           </div>
+          <div class="field" id="e_shiftEffectiveWrap" style="display:none">
+            <label>Turno novo vigente a partir de</label>
+            <input type="date" class="input" id="e_shiftEffectiveDate" value="${todayISO()}" />
+          </div>
           <div class="field"><label>Data de admissão</label><input type="date" class="input" id="e_admissao" value="${f.admissao}" /></div>
           <div class="field"><label>Status</label>
             <select class="input" id="e_status"><option ${f.status==='Ativo'?'selected':''}>Ativo</option><option ${f.status==='Inativo'?'selected':''}>Inativo</option></select>
@@ -804,6 +808,12 @@
     $("#cancelModal").addEventListener("click", close);
     $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
     $("#e_company").addEventListener("change", e => { $("#rateFields").innerHTML = rateFieldsHTML(e.target.value); });
+    const refreshShiftEffectiveWrap = () => {
+      const changed = f.shiftId && $("#e_shift").value && $("#e_shift").value !== f.shiftId;
+      $("#e_shiftEffectiveWrap").style.display = changed ? "block" : "none";
+    };
+    $("#e_shift").addEventListener("change", refreshShiftEffectiveWrap);
+    refreshShiftEffectiveWrap();
     $("#saveEmployee").addEventListener("click", async () => {
       const companyId = $("#e_company").value;
       const company = state.companies.find(c=>c.id===companyId);
@@ -815,6 +825,9 @@
         rates, attendance: f.attendance || [], shiftHistory: f.shiftHistory || [],
         feriasSaldoDias: Math.max(0, Number($("#e_ferias_saldo").value)||0),
       };
+      // Lida ANTES de close() apagar o modal do DOM — senão o campo já não existe mais na hora de ler
+      // o valor (bug real: a data escolhida nunca era usada, sempre caía no "hoje").
+      const shiftEffectiveDateInput = $("#e_shiftEffectiveDate")?.value;
       const btn = $("#saveEmployee"); btn.disabled = true; btn.textContent = "Salvando…";
       const { error } = await supabase.from("employees").upsert(employeeToRow(updated));
       if(error){ alert("Não consegui salvar: "+error.message); btn.disabled = false; btn.textContent = "Salvar funcionário"; return; }
@@ -825,15 +838,15 @@
       if(f.shiftId && updated.shiftId && f.shiftId!==updated.shiftId){
         const oldShift = state.shifts.find(s=>s.id===f.shiftId);
         const newShift = state.shifts.find(s=>s.id===updated.shiftId);
-        const today = todayISO();
+        const effectiveDate = shiftEffectiveDateInput || todayISO();
         const newRows = [];
         if(!updated.shiftHistory.length) newRows.push({ shiftId: f.shiftId, effectiveFrom: f.admissao || "2000-01-01" });
-        newRows.push({ shiftId: updated.shiftId, effectiveFrom: today });
+        newRows.push({ shiftId: updated.shiftId, effectiveFrom: effectiveDate });
         updated.shiftHistory = [...updated.shiftHistory, ...newRows];
         try{
           await supabase.from("employee_shift_history").upsert(newRows.map(h=>shiftHistoryObjToRow(updated.id, h)), { onConflict:"employee_id,effective_from" });
         }catch(err){ console.error("Falha ao gravar histórico de turno", err); }
-        insertNotifications([{ employee_id: updated.id, type:"turno", title:"Seu turno foi alterado", body:`Seu turno foi alterado de ${oldShift?oldShift.name:"—"} para ${newShift?newShift.name:"—"}, a partir de ${brDate(today)}.` }]);
+        insertNotifications([{ employee_id: updated.id, type:"turno", title:"Seu turno foi alterado", body:`Seu turno foi alterado de ${oldShift?oldShift.name:"—"} para ${newShift?newShift.name:"—"}, a partir de ${brDate(effectiveDate)}.` }]);
       }
     });
   }
@@ -1573,13 +1586,22 @@
   }
 
   // ---------------- Frequência (lançar por turno — a rotina do dia a dia) ----------------
+  let frequencySelected = new Set(); // ids de funcionários marcados na Frequência pra apontamento em lote
   function frequenciaHTML(){
     const roster = computeDayRoster(state.frequencyDate);
+    const presentIds = new Set(roster.present.map(r=>r.employee.id));
+    [...frequencySelected].forEach(id => { if(!presentIds.has(id)) frequencySelected.delete(id); });
+    const allSelected = roster.present.length>0 && roster.present.every(r=>frequencySelected.has(r.employee.id));
     const rosterRowHTML = (r, isPresent) => `
       <div class="req-row" data-freqrow="${r.employee.id}">
-        <div class="d">${esc(r.employee.name)}</div>
-        <div class="sub">${isPresent ? (r.shift?esc(r.shift.name):"—") : (r.status==="ferias"?"Férias":"Folga")}</div>
-        ${isPresent ? `<span class="badge ${r.status==='presente'?'presente':r.status==='falta'?'falta':''}" style="margin-top:6px;display:inline-block;${!r.status?'background:rgba(251,191,36,.15);color:var(--amber);':''}">${r.status==='presente'?'Trabalhou':r.status==='falta'?'Faltou':'Sem apontamento'}</span>` : ""}
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          ${isPresent ? `<input type="checkbox" data-freqcheck="${r.employee.id}" ${frequencySelected.has(r.employee.id)?'checked':''} style="margin-top:3px;width:18px;height:18px;flex-shrink:0" />` : ""}
+          <div style="flex:1;min-width:0">
+            <div class="d">${esc(r.employee.name)}</div>
+            <div class="sub">${isPresent ? (r.shift?esc(r.shift.name):"—") : (r.status==="ferias"?"Férias":"Folga")}</div>
+            ${isPresent ? `<span class="badge ${r.status==='presente'?'presente':r.status==='falta'?'falta':''}" style="margin-top:6px;display:inline-block;${!r.status?'background:rgba(251,191,36,.15);color:var(--amber);':''}">${r.status==='presente'?'Trabalhou':r.status==='falta'?'Faltou':'Sem apontamento'}</span>` : ""}
+          </div>
+        </div>
       </div>`;
     return `
       <div class="row-flex" style="justify-content:space-between;margin-bottom:14px">
@@ -1589,7 +1611,11 @@
       <div class="card" style="margin-bottom:16px">
         <div class="field" style="margin-bottom:0"><label>Data</label><input type="date" class="input" id="freq_date" value="${state.frequencyDate}" /></div>
       </div>
-      <h2 class="section">Deveriam trabalhar (${roster.present.length})</h2>
+      <div class="row-flex" style="justify-content:space-between;align-items:center;margin-bottom:8px;gap:10px;flex-wrap:wrap">
+        <h2 class="section" style="margin:0">Deveriam trabalhar (${roster.present.length})</h2>
+        ${roster.present.length ? `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><input type="checkbox" id="freq_selectAll" ${allSelected?'checked':''} style="width:16px;height:16px" /> Selecionar todos</label>` : ""}
+      </div>
+      ${frequencySelected.size ? `<button class="btn small" id="bulkAttendanceBtn" type="button" style="margin-bottom:12px">📋 Apontar em lote (${frequencySelected.size})</button>` : ""}
       <div class="card" style="padding:4px 16px;margin-bottom:20px">
         ${roster.present.length ? roster.present.map(r=>rosterRowHTML(r,true)).join("") : `<p class="empty">Ninguém escalado.</p>`}
       </div>
@@ -1668,6 +1694,182 @@
     });
   }
 
+  // Apontamento em lote pra quem foi marcado na lista de Frequência — mesma lógica do painel desktop
+  // (cada funcionário recebe o lançamento só nos próprios dias previstos quando "vários dias" está
+  // ligado), adaptada pro layout de tela cheia do celular em vez de modal largo.
+  function openBulkAttendanceModal(employees){
+    if(!employees.length) return;
+    const shiftByEmployee = new Map(employees.map(e => [e.id, state.shifts.find(s=>s.id===e.shiftId)]));
+    const expectedByEmployee = new Map(employees.map(e => [e.id, shiftByEmployee.get(e.id)?.hoursPerDay ?? 8]));
+    const expectedValues = [...expectedByEmployee.values()];
+    const uniformExpected = expectedValues.every(v=>v===expectedValues[0]) ? expectedValues[0] : null;
+    let rangeMode = false;
+    function expectedHoursForEmployeeAt(employee, dateISO){
+      const s = state.shifts.find(sh=>sh.id===shiftIdForEmployeeOnDate(employee, dateISO));
+      return s ? s.hoursPerDay : 8;
+    }
+    function refreshRangeSummary(){
+      if(!rangeMode){ $("#b_rangeSummary").style.display = "none"; $("#saveModal").textContent = `Aplicar a ${employees.length} funcionário(s)`; return; }
+      const start = $("#b_date").value, until = $("#b_untilDate").value || start;
+      $("#b_rangeSummary").style.display = "block";
+      if(until < start){ $("#b_rangeSummary").textContent = 'A data "até" precisa ser igual ou depois da data inicial.'; return; }
+      const perEmployee = employees.map(e => {
+        const n = shiftByEmployee.get(e.id) ? scheduledDatesInRangeForEmployee(e, start, until).length : (Math.round((new Date(until)-new Date(start))/86400000)+1);
+        return `${esc(e.name)}: ${n}d`;
+      });
+      $("#b_rangeSummary").textContent = `Cada funcionário recebe apontamento só nos dias previstos pelo próprio turno dentro do período (${perEmployee.join(" · ")}).`;
+      $("#saveModal").textContent = `Aplicar ao período pra ${employees.length} funcionário(s)`;
+      refreshCostPreview();
+    }
+    function refreshCostPreview(){
+      const box = $("#b_costPreview");
+      if(!box) return;
+      const status = $("#b_status").value;
+      const hours = Number($("#b_hours").value||0);
+      if(status!=="presente" || hours<=0){ box.style.display = "none"; return; }
+      const start = $("#b_date").value, until = rangeMode ? ($("#b_untilDate").value||start) : start;
+      let totalCost = 0, totalOvertimeH = 0, anyBilled = false;
+      employees.forEach(employee => {
+        const empCompany = state.companies.find(c=>c.id===employee.companyId);
+        if(!empCompany || !empCompany.billing.hh) return;
+        anyBilled = true;
+        const expected = expectedHoursForEmployeeAt(employee, start);
+        const normalH = Math.min(hours, expected);
+        const overtimeH = round2(Math.max(0, hours-expected));
+        const pct = Number(overtimeRules.normalPct||0);
+        const hhRate = Number(employee.rates?.hh||0);
+        const days = rangeMode ? (shiftByEmployee.get(employee.id) ? scheduledDatesInRangeForEmployee(employee, start, until).length : 1) : 1;
+        totalOvertimeH += overtimeH*days;
+        totalCost += (normalH*hhRate + overtimeH*hhRate*(1+pct/100)) * days;
+      });
+      if(!anyBilled){ box.style.display = "none"; return; }
+      totalOvertimeH = round2(totalOvertimeH);
+      box.style.display = "block";
+      box.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+        <span style="font-size:11.5px;color:var(--muted)">${totalOvertimeH>0?`Inclui ${totalOvertimeH}h extra no total`:"Sem horas extras"}</span>
+        <span style="font-size:15px;font-weight:700;color:var(--brand-light)">${money(totalCost)}</span>
+      </div>`;
+    }
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>Apontar em lote</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          <p style="font-size:12px;color:var(--muted);margin-top:0">Vai aplicar o mesmo lançamento pra <b>${employees.length} funcionário(s)</b>:</p>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+            ${employees.map(e=>`<span style="background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:999px;padding:3px 10px;font-size:11.5px">${esc(e.name)} (${expectedByEmployee.get(e.id)}h)</span>`).join("")}
+          </div>
+          <div class="field"><label>Data</label><input type="date" class="input" id="b_date" value="${state.frequencyDate}" /></div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:-4px 0 12px"><input type="checkbox" id="b_rangeToggle" style="width:auto" /> Apontar vários dias de uma vez</label>
+          <div class="field" id="b_untilWrap" style="display:none">
+            <label>Até</label>
+            <input type="date" class="input" id="b_untilDate" value="${state.frequencyDate}" />
+          </div>
+          <p id="b_rangeSummary" style="font-size:11px;color:var(--muted);margin:0 0 10px;display:none"></p>
+          <div class="field"><label>Turno</label><select class="input" id="b_turno">${TURNOS.map(t=>`<option>${t}</option>`).join("")}</select></div>
+          <div class="field"><label>Horas trabalhadas</label><input type="number" step="0.5" class="input" id="b_hours" value="${uniformExpected!==null?uniformExpected:expectedValues[0]}" /></div>
+          <div class="field"><label>Situação</label>
+            <select class="input" id="b_status">${ATTENDANCE_STATUSES.map(s=>`<option value="${s}">${ATTENDANCE_STATUS_LABELS[s]}</option>`).join("")}</select>
+          </div>
+          <p style="font-size:11px;color:var(--muted);margin:0 0 10px">${uniformExpected!==null ? `Horas puxadas do turno de todos (${uniformExpected}h) quando presente.` : `Turnos com cargas diferentes entre os selecionados (${[...new Set(expectedValues)].join('h / ')}h).`} Falta/folga zeram as horas.</p>
+          <div class="field" id="b_atestadoWrap" style="display:none">
+            <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="b_atestado" style="width:auto" /> Atestado médico (falta justificada)</label>
+          </div>
+          <div class="field" id="b_atrasoWrap" style="display:none">
+            <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="b_atraso" style="width:auto" /> Atraso</label>
+          </div>
+          <div class="field"><label id="b_justifyLabel">Observação (opcional)</label><textarea class="input" id="b_justify" rows="2"></textarea></div>
+          <div class="card" id="b_costPreview" style="display:none;margin-bottom:14px"></div>
+          <div class="modal-actions">
+            <button class="btn ghost" id="cancelModal" type="button">Cancelar</button>
+            <button class="btn" id="saveModal" type="button">Aplicar a ${employees.length} funcionário(s)</button>
+          </div>
+        </div>
+      </div>
+    `;
+    refreshCostPreview();
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+    const anyMismatch = () => {
+      if($("#b_status").value!=="presente") return false;
+      const hours = Number($("#b_hours").value||0);
+      const dateForCheck = $("#b_date").value;
+      return employees.some(e => Math.abs(hours - expectedHoursForEmployeeAt(e, dateForCheck)) > 0.001);
+    };
+    const refreshJustifyLabel = () => { $("#b_justifyLabel").textContent = anyMismatch() ? "Motivo da alteração das horas (obrigatório)" : "Observação (opcional)"; };
+    $("#b_hours").addEventListener("input", () => { refreshJustifyLabel(); refreshCostPreview(); });
+    $("#b_status").addEventListener("change", () => {
+      const status = $("#b_status").value;
+      const hoursInput = $("#b_hours");
+      if(status==="presente"){
+        hoursInput.disabled = false;
+        if(Number(hoursInput.value)===0) hoursInput.value = uniformExpected!==null ? uniformExpected : expectedValues[0];
+      } else {
+        hoursInput.value = 0;
+        hoursInput.disabled = true;
+      }
+      $("#b_atestadoWrap").style.display = status==="falta" ? "block" : "none";
+      $("#b_atrasoWrap").style.display = status==="presente" ? "block" : "none";
+      refreshJustifyLabel();
+      refreshCostPreview();
+    });
+    $("#b_rangeToggle").addEventListener("change", e => {
+      rangeMode = e.target.checked;
+      $("#b_untilWrap").style.display = rangeMode ? "block" : "none";
+      if(rangeMode && $("#b_untilDate").value < $("#b_date").value) $("#b_untilDate").value = $("#b_date").value;
+      refreshRangeSummary();
+    });
+    $("#b_date").addEventListener("change", refreshRangeSummary);
+    $("#b_untilDate").addEventListener("change", refreshRangeSummary);
+    $("#saveModal").addEventListener("click", async () => {
+      const status = $("#b_status").value;
+      const hours = Number($("#b_hours").value||0);
+      const justification = $("#b_justify").value.trim();
+      if(anyMismatch() && !justification){
+        alert("As horas informadas não batem com o padrão do turno de pelo menos um funcionário selecionado. Preencha o motivo antes de aplicar.");
+        return;
+      }
+      const start = $("#b_date").value;
+      const until = rangeMode ? ($("#b_untilDate").value || start) : start;
+      if(!start){ alert("Selecione uma data."); return; }
+      if(rangeMode && until < start){
+        alert('A data "até" precisa ser igual ou depois da data inicial.');
+        return;
+      }
+      const turno = $("#b_turno").value;
+      const atestado = status==="falta" && $("#b_atestado").checked;
+      const atraso = status==="presente" && $("#b_atraso").checked;
+      const skippedEmployees = [];
+      const rows = [];
+      const entriesByEmployee = [];
+      employees.forEach(employee => {
+        const shift = shiftByEmployee.get(employee.id);
+        let dates;
+        if(!rangeMode) dates = [start];
+        else if(shift) dates = scheduledDatesInRangeForEmployee(employee, start, until);
+        else { dates = []; let cursor = start, guard = 0; while(cursor <= until && guard < 1100){ dates.push(cursor); cursor = addDays(cursor,1); guard++; } }
+        if(!dates.length){ skippedEmployees.push(employee.name); return; }
+        const newEntries = dates.map(date => ({
+          id: uid(), date, turno, hours, status, expectedHours: expectedHoursForEmployeeAt(employee, date),
+          justification, atestado, atraso,
+        }));
+        const dateSet = new Set(dates);
+        employee.attendance = [...(employee.attendance||[]).filter(a=>!dateSet.has(a.date)), ...newEntries];
+        newEntries.forEach(entry => rows.push(attendanceToRow(employee.id, entry)));
+        entriesByEmployee.push([employee.id, newEntries]);
+      });
+      const btn = $("#saveModal"); btn.disabled = true; btn.textContent = "Salvando…";
+      const { error } = await supabase.from("attendance").upsert(rows, { onConflict:"employee_id,date" });
+      if(error){ alert("Não consegui salvar: "+error.message); btn.disabled = false; btn.textContent = `Aplicar a ${employees.length} funcionário(s)`; return; }
+      frequencySelected.clear();
+      close();
+      render();
+      if(skippedEmployees.length) alert(`Nenhum dia previsto no período pra: ${skippedEmployees.join(", ")}.`);
+      entriesByEmployee.forEach(([employeeId, newEntries]) => notifyPerformanceEntries(employeeId, newEntries));
+    });
+  }
+
   function appShellHTML(){
     const pendingCount = state.timeOffRequests.filter(r=>r.status==="pendente").length;
     const lockedCount = state.employees.filter(e=>e.lockedAt).length;
@@ -1720,7 +1922,22 @@
     }
     if(state.tab==="frequencia"){
       const dateInput = $("#freq_date");
-      if(dateInput) dateInput.addEventListener("change", () => { state.frequencyDate = dateInput.value || todayISO(); render(); });
+      if(dateInput) dateInput.addEventListener("change", () => { state.frequencyDate = dateInput.value || todayISO(); frequencySelected.clear(); render(); });
+      document.querySelectorAll("[data-freqcheck]").forEach(el => el.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if(el.checked) frequencySelected.add(el.dataset.freqcheck); else frequencySelected.delete(el.dataset.freqcheck);
+        render();
+      }));
+      const selectAll = $("#freq_selectAll");
+      if(selectAll) selectAll.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const roster = computeDayRoster(state.frequencyDate);
+        if(selectAll.checked) roster.present.forEach(r=>frequencySelected.add(r.employee.id));
+        else roster.present.forEach(r=>frequencySelected.delete(r.employee.id));
+        render();
+      });
+      const bulkBtn = $("#bulkAttendanceBtn");
+      if(bulkBtn) bulkBtn.addEventListener("click", () => openBulkAttendanceModal(state.employees.filter(e=>frequencySelected.has(e.id))));
       document.querySelectorAll("[data-freqrow]").forEach(el => el.addEventListener("click", () => {
         const employee = state.employees.find(e=>e.id===el.dataset.freqrow);
         if(employee) openAttendanceModal(employee, state.frequencyDate);
