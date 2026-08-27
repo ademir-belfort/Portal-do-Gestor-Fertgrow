@@ -1721,12 +1721,14 @@
       $("#saveModal").textContent = `Aplicar ao período pra ${employees.length} funcionário(s)`;
       refreshCostPreview();
     }
+    const useOwnHours = () => { const el = $("#b_useOwnHours"); return el ? el.checked : false; };
     function refreshCostPreview(){
       const box = $("#b_costPreview");
       if(!box) return;
       const status = $("#b_status").value;
-      const hours = Number($("#b_hours").value||0);
-      if(status!=="presente" || hours<=0){ box.style.display = "none"; return; }
+      const sharedHours = Number($("#b_hours").value||0);
+      const own = useOwnHours();
+      if(status!=="presente" || (!own && sharedHours<=0)){ box.style.display = "none"; return; }
       const start = $("#b_date").value, until = rangeMode ? ($("#b_untilDate").value||start) : start;
       let totalCost = 0, totalOvertimeH = 0, anyBilled = false;
       employees.forEach(employee => {
@@ -1734,6 +1736,7 @@
         if(!empCompany || !empCompany.billing.hh) return;
         anyBilled = true;
         const expected = expectedHoursForEmployeeAt(employee, start);
+        const hours = own ? expected : sharedHours;
         const normalH = Math.min(hours, expected);
         const overtimeH = round2(Math.max(0, hours-expected));
         const pct = Number(overtimeRules.normalPct||0);
@@ -1766,11 +1769,15 @@
           </div>
           <p id="b_rangeSummary" style="font-size:11px;color:var(--muted);margin:0 0 10px;display:none"></p>
           <div class="field"><label>Turno</label><select class="input" id="b_turno">${TURNOS.map(t=>`<option>${t}</option>`).join("")}</select></div>
-          <div class="field"><label>Horas trabalhadas</label><input type="number" step="0.5" class="input" id="b_hours" value="${uniformExpected!==null?uniformExpected:expectedValues[0]}" /></div>
+          ${uniformExpected===null ? `
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:2px 0 10px">
+            <input type="checkbox" id="b_useOwnHours" checked style="width:auto" /> Usar o horário padrão de cada funcionário (os selecionados têm turnos diferentes: ${[...new Set(expectedValues)].join('h / ')}h)
+          </label>` : ""}
+          <div class="field"><label>Horas trabalhadas</label><input type="number" step="0.5" class="input" id="b_hours" value="${uniformExpected!==null?uniformExpected:expectedValues[0]}" ${uniformExpected===null?'disabled':''} /></div>
           <div class="field"><label>Situação</label>
             <select class="input" id="b_status">${ATTENDANCE_STATUSES.map(s=>`<option value="${s}">${ATTENDANCE_STATUS_LABELS[s]}</option>`).join("")}</select>
           </div>
-          <p style="font-size:11px;color:var(--muted);margin:0 0 10px">${uniformExpected!==null ? `Horas puxadas do turno de todos (${uniformExpected}h) quando presente.` : `Turnos com cargas diferentes entre os selecionados (${[...new Set(expectedValues)].join('h / ')}h).`} Falta/folga zeram as horas.</p>
+          <p style="font-size:11px;color:var(--muted);margin:0 0 10px">${uniformExpected!==null ? `Horas puxadas do turno de todos (${uniformExpected}h) quando presente.` : `Desmarque acima pra informar um valor único pra todos em vez do padrão de cada um.`} Falta/folga zeram as horas.</p>
           <div class="field" id="b_atestadoWrap" style="display:none">
             <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="b_atestado" style="width:auto" /> Atestado médico (falta justificada)</label>
           </div>
@@ -1793,12 +1800,18 @@
     $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
     const anyMismatch = () => {
       if($("#b_status").value!=="presente") return false;
+      if(useOwnHours()) return false; // cada um recebe o próprio padrão, não existe "descompasso" aqui
       const hours = Number($("#b_hours").value||0);
       const dateForCheck = $("#b_date").value;
       return employees.some(e => Math.abs(hours - expectedHoursForEmployeeAt(e, dateForCheck)) > 0.001);
     };
     const refreshJustifyLabel = () => { $("#b_justifyLabel").textContent = anyMismatch() ? "Motivo da alteração das horas (obrigatório)" : "Observação (opcional)"; };
     $("#b_hours").addEventListener("input", () => { refreshJustifyLabel(); refreshCostPreview(); });
+    const useOwnHoursEl = $("#b_useOwnHours");
+    if(useOwnHoursEl) useOwnHoursEl.addEventListener("change", () => {
+      $("#b_hours").disabled = useOwnHoursEl.checked;
+      refreshJustifyLabel(); refreshCostPreview();
+    });
     $("#b_status").addEventListener("change", () => {
       const status = $("#b_status").value;
       const hoursInput = $("#b_hours");
@@ -1824,7 +1837,8 @@
     $("#b_untilDate").addEventListener("change", refreshRangeSummary);
     $("#saveModal").addEventListener("click", async () => {
       const status = $("#b_status").value;
-      const hours = Number($("#b_hours").value||0);
+      const own = useOwnHours();
+      const sharedHours = Number($("#b_hours").value||0);
       const justification = $("#b_justify").value.trim();
       if(anyMismatch() && !justification){
         alert("As horas informadas não batem com o padrão do turno de pelo menos um funcionário selecionado. Preencha o motivo antes de aplicar.");
@@ -1850,10 +1864,13 @@
         else if(shift) dates = scheduledDatesInRangeForEmployee(employee, start, until);
         else { dates = []; let cursor = start, guard = 0; while(cursor <= until && guard < 1100){ dates.push(cursor); cursor = addDays(cursor,1); guard++; } }
         if(!dates.length){ skippedEmployees.push(employee.name); return; }
-        const newEntries = dates.map(date => ({
-          id: uid(), date, turno, hours, status, expectedHours: expectedHoursForEmployeeAt(employee, date),
-          justification, atestado, atraso,
-        }));
+        const newEntries = dates.map(date => {
+          const expectedHours = expectedHoursForEmployeeAt(employee, date);
+          return {
+            id: uid(), date, turno, hours: status==="presente" ? (own ? expectedHours : sharedHours) : 0, status, expectedHours,
+            justification, atestado, atraso,
+          };
+        });
         const dateSet = new Set(dates);
         employee.attendance = [...(employee.attendance||[]).filter(a=>!dateSet.has(a.date)), ...newEntries];
         newEntries.forEach(entry => rows.push(attendanceToRow(employee.id, entry)));
