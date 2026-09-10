@@ -847,6 +847,53 @@
           await supabase.from("employee_shift_history").upsert(newRows.map(h=>shiftHistoryObjToRow(updated.id, h)), { onConflict:"employee_id,effective_from" });
         }catch(err){ console.error("Falha ao gravar histórico de turno", err); }
         insertNotifications([{ employee_id: updated.id, type:"turno", title:"Seu turno foi alterado", body:`Seu turno foi alterado de ${oldShift?oldShift.name:"—"} para ${newShift?newShift.name:"—"}, a partir de ${brDate(effectiveDate)}.` }]);
+        const empresa = state.companies.find(c=>c.id===updated.companyId);
+        const { subject, body } = buildShiftChangeEmailText(updated, empresa, oldShift, newShift, effectiveDate);
+        openShiftChangeEmailModal(subject, body);
+      }
+    });
+  }
+
+  // E-mail padrão pra avisar a empresa terceirizada de uma troca de turno — só monta o texto (sem
+  // guardar e-mail de empresa nenhum), o gestor copia/abre no próprio programa de e-mail e preenche o
+  // destinatário na hora.
+  function buildShiftChangeEmailText(employee, company, oldShift, newShift, effectiveDate){
+    const subject = `Alteração de turno — ${employee.name}`;
+    const body = `Prezados,\n\nInformamos que o turno do(a) colaborador(a) ${employee.name}${employee.cargo ? ` (${employee.cargo})` : ""}, alocado(a) em ${company?company.name:"—"}, foi alterado:\n\nTurno anterior: ${oldShift?oldShift.name:"—"}\nNovo turno: ${newShift?newShift.name:"—"}\nVigência: a partir de ${brDate(effectiveDate)}\n\nQualquer dúvida, estamos à disposição.\n\nAtenciosamente,\nFertgrow`;
+    return { subject, body };
+  }
+  function openShiftChangeEmailModal(subject, body){
+    $("#modalRoot").innerHTML = `
+      <div class="modal-backdrop" id="backdrop">
+        <div class="modal">
+          <div class="modal-head"><h3>E-mail pronto pra empresa</h3><button class="btn ghost small" id="closeModal" type="button">✕</button></div>
+          <p style="font-size:12px;color:var(--muted);margin-top:0">Copie o texto (ou abra direto no seu app de e-mail) e preencha o destinatário — não guardamos e-mail de empresa no sistema.</p>
+          <div class="field"><label>Assunto</label><input class="input" id="email_subject" readonly value="${esc(subject)}" /></div>
+          <div class="field"><label>Corpo</label><textarea class="input" id="email_body" readonly rows="9">${esc(body)}</textarea></div>
+          <div class="modal-actions">
+            <button class="btn ghost" id="copyEmailBtn" type="button">📋 Copiar texto</button>
+            <a class="btn" id="openMailBtn" href="mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}" style="display:block;text-align:center;text-decoration:none;box-sizing:border-box">✉️ Abrir no e-mail</a>
+          </div>
+          <div class="modal-actions">
+            <button class="btn ghost" id="cancelModal" type="button">Fechar</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const close = () => { $("#modalRoot").innerHTML = ""; };
+    $("#closeModal").addEventListener("click", close);
+    $("#cancelModal").addEventListener("click", close);
+    $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
+    $("#copyEmailBtn").addEventListener("click", async () => {
+      const full = `Assunto: ${subject}\n\n${body}`;
+      const btn = $("#copyEmailBtn");
+      try{
+        await navigator.clipboard.writeText(full);
+        btn.textContent = "✅ Copiado!";
+        setTimeout(() => { const b = $("#copyEmailBtn"); if(b) b.textContent = "📋 Copiar texto"; }, 1800);
+      }catch(err){
+        const ta = $("#email_body"); ta.focus(); ta.select();
+        alert("Não consegui copiar automaticamente — selecionei o texto do corpo, use Ctrl+C pra copiar (e copie o assunto à parte).");
       }
     });
   }
