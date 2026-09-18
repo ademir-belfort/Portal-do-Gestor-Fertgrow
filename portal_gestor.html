@@ -106,6 +106,40 @@
     ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     : null;
 
+  // Mesmo guard do painel desktop: avisa antes de sair/recarregar enquanto uma gravação (frequência,
+  // OS, etc.) ainda está em voo, pra não perder silenciosamente um apontamento por causa de alguém
+  // fechar o app/recarregar bem na hora em que o upsert pro Supabase ainda não tinha terminado.
+  let pendingCloudWrites = 0;
+  function trackedCloudCall(promiseLike){
+    pendingCloudWrites++;
+    const done = () => { pendingCloudWrites = Math.max(0, pendingCloudWrites-1); };
+    Promise.resolve(promiseLike).then(done, done);
+    return promiseLike;
+  }
+  window.addEventListener("beforeunload", (e) => {
+    if(pendingCloudWrites > 0){ e.preventDefault(); e.returnValue = ""; }
+  });
+  // Mesmo problema real encontrado no painel desktop: o Supabase (PostgREST) trunca silenciosamente
+  // um "select('*')" sem paginação no limite do projeto (1000 linhas por padrão) -- attendance é 1
+  // linha por funcionário por dia, passa de 1000 rapidinho, e sem "order by" o recorte que volta é
+  // praticamente aleatório, fazendo apontamentos recentes "sumirem" ao recarregar mesmo salvando
+  // certo. Sempre continua até uma página vazia (não assume tamanho pedido == devolvido).
+  async function fetchAllRows(table, orderCol, filterFn){
+    const PAGE = 1000;
+    let allRows = [];
+    let from = 0;
+    while(true){
+      let q = supabase.from(table).select("*").order(orderCol);
+      if(filterFn) q = filterFn(q);
+      const { data, error } = await q.range(from, from+PAGE-1);
+      if(error) return { data: null, error };
+      if(!data || !data.length) break;
+      allRows = allRows.concat(data);
+      from += data.length;
+    }
+    return { data: allRows, error: null };
+  }
+
   // ---------------- helpers ----------------
   const $ = (sel, root=document) => root.querySelector(sel);
   const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
@@ -169,6 +203,52 @@
   function checklistAreaToRow(a){ return { id:a.id, category_id:a.categoryId, name:a.name, order:a.order||0 }; }
   function checklistEquipmentFromRow(r){ return { id:r.id, areaId:r.area_id, name:r.name, order:r.order||0 }; }
   function checklistEquipmentToRow(e){ return { id:e.id, area_id:e.areaId, name:e.name, order:e.order||0 }; }
+  // ---------------- OS do PCM (Backlog/Distribuídas/Painel -- espelha o painel desktop, sem a parte
+  // de IMPORTAR o PDF/planilha, que continua só no site) ----------------
+  function serviceOrderToRow(o){
+    return {
+      id:o.id, os_number:o.osNumber, codigo_externo:o.codigoExterno||"", description:o.description||"",
+      tag:o.tag||"", asset_name:o.assetName||"", pcm_executante:o.pcmExecutante||"", pcm_oficina:o.pcmOficina||"",
+      schedule:o.schedule||[], week_label:o.weekLabel||"", week_start:o.weekStart||null, week_end:o.weekEnd||null,
+      pcm_emitted_at:o.pcmEmittedAt||null, setor:o.setor||"", responsible_employee_id:o.responsibleEmployeeId||null,
+      status:o.status||"backlog", source_file_name:o.sourceFileName||"", imported_at:o.importedAt, distributed_at:o.distributedAt||null,
+      scheduled_date:o.scheduledDate||null, completed_at:o.completedAt||null, reprogrammed_count:o.reprogrammedCount||0,
+    };
+  }
+  function serviceOrderFromRow(r){
+    return {
+      id:r.id, osNumber:r.os_number, codigoExterno:r.codigo_externo||"", description:r.description||"",
+      tag:r.tag||"", assetName:r.asset_name||"", pcmExecutante:r.pcm_executante||"", pcmOficina:r.pcm_oficina||"",
+      schedule:r.schedule||[], weekLabel:r.week_label||"", weekStart:r.week_start||"", weekEnd:r.week_end||"",
+      pcmEmittedAt:r.pcm_emitted_at||"", setor:r.setor||"", responsibleEmployeeId:r.responsible_employee_id||"",
+      status:r.status||"backlog", sourceFileName:r.source_file_name||"", importedAt:r.imported_at, distributedAt:r.distributed_at||"",
+      scheduledDate:r.scheduled_date||"", completedAt:r.completed_at||"", reprogrammedCount:r.reprogrammed_count||0,
+    };
+  }
+  const cloudUpsertServiceOrder = (o) => trackedCloudCall(supabase.from("service_orders").upsert(serviceOrderToRow(o)));
+  const cloudDeleteServiceOrder = (id) => trackedCloudCall(supabase.from("service_orders").delete().eq("id", id));
+  const PCM_DAY_OFFSET = { seg:0, ter:1, qua:2, qui:3, sex:4, sab:5, dom:6 };
+  function pcmScheduleDates(weekStart, schedule){
+    if(!weekStart || !Array.isArray(schedule) || !schedule.length) return [];
+    const seen = new Set(); const dates = [];
+    schedule.forEach(s => {
+      const offset = PCM_DAY_OFFSET[s.day];
+      if(offset==null) return;
+      const date = addDays(weekStart, offset);
+      if(seen.has(date)) return;
+      seen.add(date); dates.push(date);
+    });
+    dates.sort();
+    return dates;
+  }
+  function pcmScheduleSummary(weekStart, schedule){
+    const dates = pcmScheduleDates(weekStart, schedule);
+    return dates.length ? dates.map(brDate).join(", ") : "—";
+  }
+  function pcmFirstScheduledDate(weekStart, schedule){
+    const dates = pcmScheduleDates(weekStart, schedule);
+    return dates.length ? dates[0] : "";
+  }
   function employeeToRow(e){ return { id:e.id, name:e.name, email:e.email?e.email.trim().toLowerCase():null, cargo:e.cargo||"", company_id:e.companyId||null, shift_id:e.shiftId||null, admissao:e.admissao||null, status:e.status||"Ativo", rates:e.rates||{}, ferias_saldo_dias: e.feriasSaldoDias ?? 30 }; }
   function employeeFromRow(r, attendance, shiftHistory, profile){ return { id:r.id, name:r.name, email:r.email||"", cargo:r.cargo||"", companyId:r.company_id||"", shiftId:r.shift_id||"", admissao:r.admissao||"", status:r.status||"Ativo", rates:r.rates||{}, feriasSaldoDias: r.ferias_saldo_dias ?? 30, attendance: attendance||[], shiftHistory: shiftHistory||[], profileId: profile?.id||null, lockedAt: profile?.locked_at||null }; }
   function shiftHistoryRowToObj(r){ return { id:r.id, shiftId:r.shift_id, effectiveFrom:r.effective_from }; }
@@ -406,10 +486,39 @@
     checklistModeloCategoryId: "",
     checklistHistory: [], checklistHistoryMonth: todayISO().slice(0,7),
     checklistHistoryEmployeeId: "", checklistHistoryCategoryId: "",
+    serviceOrders: [],
+    pcmSubTab: "backlog",
+    pcmBacklogSearch: "", pcmBacklogSetorFilter: "",
+    pcmDistribuidasSearch: "", pcmDistribuidasStatusFilter: "", pcmDistribuidasSetorFilter: "",
+    pcmPainelDate: "",
   };
   let checklistHistoryLoaded = false; // recarrega o histórico sempre que a subaba é reaberta
 
-  function render(){ $("#app").innerHTML = viewHTML(); wireView(); }
+  // Preserva foco + posição do cursor de um <input>/<textarea> entre re-renders -- sem isso, qualquer
+  // campo de busca/filtro (que chama render() a cada tecla digitada) perde o foco no meio da
+  // digitação, porque o re-render troca o DOM inteiro debaixo do dedo de quem está digitando -- só
+  // dava pra escrever um caractere de cada vez. Conserta TODO campo desse tipo de uma vez só.
+  function render(){
+    const root = $("#app");
+    const active = document.activeElement;
+    let focusInfo = null;
+    if(active && root.contains(active) && active.id && (active.tagName==="INPUT" || active.tagName==="TEXTAREA")){
+      focusInfo = { id: active.id, selectionStart: null, selectionEnd: null };
+      try{ focusInfo.selectionStart = active.selectionStart; focusInfo.selectionEnd = active.selectionEnd; }
+      catch(err){ /* tipos como date/number não suportam seleção de texto -- ainda restaura o foco */ }
+    }
+    root.innerHTML = viewHTML();
+    wireView();
+    if(focusInfo){
+      const el = document.getElementById(focusInfo.id);
+      if(el && (el.tagName==="INPUT" || el.tagName==="TEXTAREA")){
+        el.focus();
+        if(focusInfo.selectionStart!=null){
+          try{ el.setSelectionRange(focusInfo.selectionStart, focusInfo.selectionEnd); }catch(err){ /* idem acima */ }
+        }
+      }
+    }
+  }
   function viewHTML(){
     if(state.view==="unconfigured") return `<div class="card" style="margin:40px 16px"><p style="margin-top:0">App ainda não conectado ao banco compartilhado.</p></div>`;
     if(state.view==="loading") return `<div class="spinner">Carregando…</div>`;
@@ -481,7 +590,7 @@
       supabase.from("shifts").select("*"),
       supabase.from("holidays").select("*"),
       supabase.from("employees").select("*"),
-      supabase.from("attendance").select("*"),
+      fetchAllRows("attendance", "id"),
       supabase.from("employee_shift_history").select("*"),
       supabase.from("profiles").select("id, employee_id, failed_login_attempts, locked_at").not("employee_id", "is", null),
       supabase.from("dss_topics").select("*").order("date",{ascending:false}).limit(30),
@@ -504,14 +613,21 @@
     state.checklistCategories = (c9.data||[]).map(checklistCategoryFromRow);
     state.checklistAreas = (c10.data||[]).map(checklistAreaFromRow);
     state.checklistEquipment = (c11.data||[]).map(checklistEquipmentFromRow);
-    const { data: reqRows } = await supabase.from("time_off_requests").select("*").order("created_at",{ascending:false});
-    state.timeOffRequests = (reqRows||[]).map(timeOffRequestFromRow);
+    const { data: reqRows } = await fetchAllRows("time_off_requests", "created_at");
+    state.timeOffRequests = (reqRows||[]).map(timeOffRequestFromRow).sort((a,b)=> a.createdAt < b.createdAt ? 1 : -1);
     // Fora do Promise.all de propósito: se essa tabela ainda não existir (schema não atualizado no
     // banco), não pode derrubar o carregamento do resto — best-effort, mantém o padrão CLT se falhar.
     try{
       const { data: otRow } = await supabase.from("overtime_rules").select("*").eq("id", true).maybeSingle();
       if(otRow){ overtimeRules.normalPct = Number(otRow.normal_pct); overtimeRules.restDayPct = Number(otRow.rest_day_pct); }
     }catch(err){ /* sem essa tabela ainda, ou sem conexão — mantém o padrão CLT */ }
+    // Idem: tabela nova (Backlog de OS do PCM), fora do Promise.all pra não derrubar o resto se o
+    // schema ainda não tiver rodado nesse banco.
+    try{
+      const { data: soRows, error: soErr } = await supabase.from("service_orders").select("*");
+      if(soErr) throw soErr;
+      state.serviceOrders = (soRows||[]).map(serviceOrderFromRow);
+    }catch(err){ state.serviceOrders = state.serviceOrders || []; }
   }
   // Histórico de checklists preenchidos — sob demanda (só quando a subaba Histórico é aberta/filtrada),
   // não no boot. Sem o join do painel desktop (select("*, employees(name)")): o nome do funcionário já
@@ -519,7 +635,10 @@
   // desnecessária.
   async function fetchChecklistHistory({month, employeeId, categoryId}){
     let q = supabase.from("daily_checklists").select("*").order("date", {ascending:false});
-    if(month) q = q.gte("date", `${month}-01`).lte("date", `${month}-31`);
+    // Nunca usar "${month}-31" como limite superior: fevereiro/abril/etc não têm 31 dias, e um filtro
+    // com data inválida (ex: "2026-09-31") faz a query inteira falhar no Postgres. Usa o dia 1 do mês
+    // seguinte como limite exclusivo, que funciona pra qualquer mês sem precisar calcular dias no mês.
+    if(month) q = q.gte("date", `${month}-01`).lt("date", `${addMonths(month,1)}-01`);
     if(employeeId) q = q.eq("employee_id", employeeId);
     if(categoryId) q = q.eq("category_id", categoryId);
     const { data, error } = await q;
@@ -528,6 +647,7 @@
       id:r.id, employeeId:r.employee_id,
       employeeName: state.employees.find(e=>e.id===r.employee_id)?.name || "—",
       date:r.date, categoryId:r.category_id, items:r.items||[],
+      completedServiceOrders:r.completed_service_orders||[],
     }));
   }
   async function refreshAllData(){ await loadAllData(); render(); }
@@ -569,13 +689,13 @@
       }
     }
     const rows = timeOffRequestToAttendanceRows(req, employee);
-    const { error } = await supabase.from("attendance").upsert(rows.map(r=>attendanceToRow(employee.id, r)), { onConflict:"employee_id,date" });
+    const { error } = await trackedCloudCall(supabase.from("attendance").upsert(rows.map(r=>attendanceToRow(employee.id, r)), { onConflict:"employee_id,date" }));
     if(error){ alert("Não consegui gravar a frequência: "+error.message); return false; }
     const byDate = new Map(rows.map(r=>[r.date, r]));
     employee.attendance = [...(employee.attendance||[]).filter(a=>!byDate.has(a.date)), ...rows];
     if(req.type==="ferias"){
       employee.feriasSaldoDias = (employee.feriasSaldoDias ?? 0) - (dayCount + (req.diasVendidos||0));
-      await supabase.from("employees").update({ ferias_saldo_dias: employee.feriasSaldoDias }).eq("id", employee.id);
+      await trackedCloudCall(supabase.from("employees").update({ ferias_saldo_dias: employee.feriasSaldoDias }).eq("id", employee.id));
     }
     req.status = "aprovado";
     return true;
@@ -905,6 +1025,7 @@
       { ic:"🔄", lbl:"Turnos", tab:"turnos" }, { ic:"📅", lbl:"Feriados", tab:"feriados" },
       { ic:"🗓️", lbl:"Calendário", tab:"calendario" }, { ic:"🏖️", lbl:"Mapa de Férias", tab:"mapaferias" }, { ic:"📊", lbl:"Indicadores", tab:"indicadores" },
       { ic:"✅", lbl:"Checklist", tab:"checklist" }, { ic:"🦺", lbl:"DSS", tab:"dss" }, { ic:"🏢", lbl:"Empresas", tab:"empresas" },
+      { ic:"🔧", lbl:"OS / PCM", tab:"pcm" },
     ];
     return `
       <h2 class="section">Mais</h2>
@@ -963,6 +1084,155 @@
       </div>`}
     `;
   }
+
+  // ---------------- OS / PCM (Backlog/Distribuídas/Painel -- ver + Finalizar/Reprogramar; importar
+  // o PDF/planilha do PCM continua só no painel desktop, tela grande é mais prático pra isso) --------
+  function pcmAdminHTML(){
+    const backlogCount = state.serviceOrders.filter(o=>o.status==="backlog").length;
+    return `
+      <div class="row-flex" style="justify-content:space-between;margin-bottom:10px">
+        <h2 class="section" style="margin:0">OS / PCM</h2>
+        <span class="link" data-tab="mais">← Mais</span>
+      </div>
+      <div class="tabs2">
+        <div class="t ${state.pcmSubTab==='backlog'?'active':''}" data-pcmsub="backlog">Backlog${backlogCount?` (${backlogCount})`:""}</div>
+        <div class="t ${state.pcmSubTab==='distribuidas'?'active':''}" data-pcmsub="distribuidas">Distribuídas</div>
+        <div class="t ${state.pcmSubTab==='painel'?'active':''}" data-pcmsub="painel">Painel</div>
+      </div>
+      ${state.pcmSubTab==="distribuidas" ? pcmDistribuidasHTML() : state.pcmSubTab==="painel" ? pcmPainelHTML() : pcmBacklogHTML()}
+    `;
+  }
+  function pcmBacklogHTML(){
+    const q = (state.pcmBacklogSearch||"").trim().toLowerCase();
+    const setorOptions = [...new Set(state.employees.map(e=>e.setor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+    const rows = state.serviceOrders
+      .filter(o=>o.status==="backlog")
+      .filter(o=>!state.pcmBacklogSetorFilter || o.setor===state.pcmBacklogSetorFilter)
+      .filter(o=>!q || [o.osNumber,o.description,o.tag,o.assetName].join(" ").toLowerCase().includes(q))
+      .sort((a,b)=>a.osNumber-b.osNumber);
+    return `
+      <div class="field" style="margin-bottom:8px"><input class="input" id="pcmBacklogSearchInput" placeholder="Buscar OS, TAG, descrição…" value="${esc(state.pcmBacklogSearch||"")}" /></div>
+      <div class="field" style="margin-bottom:14px">
+        <select class="input" id="pcmBacklogSetorFilter">
+          <option value="">Todos os setores</option>
+          ${setorOptions.map(s=>`<option value="${esc(s)}" ${s===state.pcmBacklogSetorFilter?'selected':''}>${esc(s)}</option>`).join("")}
+        </select>
+      </div>
+      ${!rows.length ? `<p class="empty">Backlog vazio. Importe a Programação Semanal pelo painel desktop.</p>` : rows.map(o => {
+        const ready = !!o.setor;
+        return `
+        <div class="card" style="margin-bottom:10px">
+          <div style="font-size:14px;font-weight:700">OS ${o.osNumber} — ${esc(o.description)||"—"}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(o.tag)||"—"}${o.assetName?` · ${esc(o.assetName)}`:""}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Prevista: ${esc(pcmScheduleSummary(o.weekStart, o.schedule))}</div>
+          <div class="field" style="margin-top:10px;margin-bottom:8px"><label>Setor</label><select class="input" data-pcmsetor="${o.id}">
+            <option value="">Selecione…</option>
+            ${setorOptions.map(s=>`<option value="${esc(s)}" ${o.setor===s?'selected':''}>${esc(s)}</option>`).join("")}
+          </select></div>
+          <div class="row-flex" style="gap:8px">
+            <button class="btn small" data-pcmdistribuir="${o.id}" style="width:auto;flex:1" ${ready?'':'disabled'}>Distribuir</button>
+            <button class="btn ghost small" data-pcmdescartar="${o.id}" style="width:auto;color:var(--rose)">🗑</button>
+          </div>
+        </div>`;
+      }).join("")}
+    `;
+  }
+  function pcmDistribuidasHTML(){
+    const q = (state.pcmDistribuidasSearch||"").trim().toLowerCase();
+    const today = todayISO();
+    const setorOptions = [...new Set(state.employees.map(e=>e.setor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+    const rows = state.serviceOrders
+      .filter(o=>o.status==="distribuida" || o.status==="realizada")
+      .filter(o=>!state.pcmDistribuidasStatusFilter || o.status===state.pcmDistribuidasStatusFilter)
+      .filter(o=>!state.pcmDistribuidasSetorFilter || o.setor===state.pcmDistribuidasSetorFilter)
+      .filter(o=>!q || [o.osNumber,o.description,o.tag,o.assetName].join(" ").toLowerCase().includes(q))
+      .sort((a,b)=> (a.scheduledDate||"9999").localeCompare(b.scheduledDate||"9999"));
+    return `
+      <div class="field" style="margin-bottom:8px"><input class="input" id="pcmDistSearchInput" placeholder="Buscar OS, TAG, descrição…" value="${esc(state.pcmDistribuidasSearch||"")}" /></div>
+      <div class="row-flex" style="gap:8px;margin-bottom:14px">
+        <select class="input" id="pcmDistStatusFilter">
+          <option value="">Distribuídas + realizadas</option>
+          <option value="distribuida" ${state.pcmDistribuidasStatusFilter==='distribuida'?'selected':''}>Só distribuídas</option>
+          <option value="realizada" ${state.pcmDistribuidasStatusFilter==='realizada'?'selected':''}>Só realizadas</option>
+        </select>
+        <select class="input" id="pcmDistSetorFilter">
+          <option value="">Todos os setores</option>
+          ${setorOptions.map(s=>`<option value="${esc(s)}" ${s===state.pcmDistribuidasSetorFilter?'selected':''}>${esc(s)}</option>`).join("")}
+        </select>
+      </div>
+      ${!rows.length ? `<p class="empty">Nenhuma OS distribuída ainda.</p>` : rows.map(o => {
+        const atrasada = o.status==="distribuida" && o.scheduledDate && o.scheduledDate<today;
+        const statusBadge = o.status==="realizada" ? `<span class="badge aprovado">✅ Realizada</span>`
+          : atrasada ? `<span class="badge rejeitado">⚠️ Em atraso</span>`
+          : `<span class="badge pendente">Distribuída</span>`;
+        return `
+        <div class="card" style="margin-bottom:10px">
+          <div class="row-flex" style="justify-content:space-between;align-items:flex-start;gap:8px">
+            <div style="font-size:14px;font-weight:700">OS ${o.osNumber} — ${esc(o.description)||"—"}</div>
+            ${statusBadge}
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(o.tag)||"—"}${o.assetName?` · ${esc(o.assetName)}`:""}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(o.setor)||"—"}</div>
+          ${o.reprogrammedCount>0?`<div style="font-size:11px;color:var(--muted);margin-top:2px">reprogramada ${o.reprogrammedCount}x</div>`:""}
+          <div class="field" style="margin-top:10px;margin-bottom:8px"><label>Data agendada</label><input type="date" class="input" data-pcmscheduledate="${o.id}" value="${esc(o.scheduledDate||"")}" /></div>
+          <div class="row-flex" style="gap:8px">
+            ${o.status==="realizada"
+              ? `<button class="btn ghost small" data-pcmreabrir="${o.id}" style="width:auto;flex:1">↩ Reabrir</button>`
+              : `<button class="btn small" data-pcmfinalizar="${o.id}" style="width:auto;flex:1">✅ Finalizar</button>
+                 <button class="btn ghost small" data-pcmrevert="${o.id}" style="width:auto">↩ Backlog</button>`}
+          </div>
+        </div>`;
+      }).join("")}
+    `;
+  }
+  function pcmPainelCardHTML(o){
+    const done = o.status==="realizada";
+    return `
+      <div class="req-row" style="cursor:default;${done?'opacity:.7':''}">
+        <div class="d">${done?"✅ ":""}OS ${o.osNumber} — ${esc(o.description)||"—"}</div>
+        <div class="sub">${esc(o.tag)||"—"}${o.assetName?` · ${esc(o.assetName)}`:""} · ${esc(o.setor)||"—"}</div>
+      </div>
+    `;
+  }
+  function pcmPainelHTML(){
+    const today = todayISO();
+    const month = today.slice(0,7);
+    const active = state.serviceOrders.filter(o=>o.status==="distribuida"||o.status==="realizada");
+    const pendentes = active.filter(o=>o.status==="distribuida");
+    const realizadasNoMes = active.filter(o=>o.status==="realizada" && o.completedAt && o.completedAt.slice(0,7)===month);
+    const scheduledThisMonth = active.filter(o=>o.scheduledDate && o.scheduledDate.slice(0,7)===month);
+    const doneOfScheduledThisMonth = scheduledThisMonth.filter(o=>o.status==="realizada");
+    const pctConcluido = scheduledThisMonth.length ? Math.round((doneOfScheduledThisMonth.length/scheduledThisMonth.length)*100) : null;
+    const emAtraso = pendentes.filter(o=>o.scheduledDate && o.scheduledDate<today);
+    const reprogramadasTotal = active.filter(o=>(o.reprogrammedCount||0)>0).length;
+
+    const painelDate = state.pcmPainelDate || today;
+    const doDia = active.filter(o=>o.scheduledDate===painelDate);
+    const doDiaPendentes = doDia.filter(o=>o.status==="distribuida");
+    const doDiaRealizadas = doDia.filter(o=>o.status==="realizada");
+    const dateLabel = new Date(painelDate+"T00:00:00").toLocaleDateString("pt-BR",{weekday:"long", day:"2-digit", month:"long", year:"numeric"});
+
+    return `
+      <div class="kpis" style="margin-bottom:16px">
+        <div class="card kpi"><div class="label">Pendentes</div><div class="value">${pendentes.length}</div></div>
+        <div class="card kpi"><div class="label">Realizadas no mês</div><div class="value" style="color:var(--emerald)">${realizadasNoMes.length}</div></div>
+        <div class="card kpi"><div class="label">% concluído no mês</div><div class="value">${pctConcluido==null?"—":pctConcluido+"%"}</div></div>
+        <div class="card kpi"><div class="label">Em atraso</div><div class="value" style="color:${emAtraso.length?'var(--rose)':'var(--emerald)'}">${emAtraso.length}</div></div>
+        <div class="card kpi" style="grid-column:1/-1"><div class="label">Reprogramadas</div><div class="value" style="color:var(--amber)">${reprogramadasTotal}</div></div>
+      </div>
+      <div class="field" style="margin-bottom:4px"><label>Visão do dia</label><input type="date" class="input" id="pcmPainelDate" value="${painelDate}" /></div>
+      <p style="font-size:11.5px;color:var(--muted);margin:4px 0 12px;text-transform:capitalize">${esc(dateLabel)}</p>
+      ${!doDia.length ? `<p class="empty">Nenhuma OS agendada pra esse dia.</p>` : `
+      ${doDiaPendentes.length ? `
+      <h2 class="section">Pendentes (${doDiaPendentes.length})</h2>
+      <div class="card" style="padding:4px 16px;margin-bottom:16px">${doDiaPendentes.map(o=>pcmPainelCardHTML(o)).join("")}</div>` : ""}
+      ${doDiaRealizadas.length ? `
+      <h2 class="section">Realizadas (${doDiaRealizadas.length})</h2>
+      <div class="card" style="padding:4px 16px">${doDiaRealizadas.map(o=>pcmPainelCardHTML(o)).join("")}</div>` : ""}
+      `}
+    `;
+  }
+
   // Mesma lógica de dados/PDF do painel desktop, sem alterações (cálculo puro, não depende de tela).
   function buildManagementReportData(companyId, month){
     const companies = companyId ? state.companies.filter(c=>c.id===companyId) : state.companies;
@@ -1196,7 +1466,7 @@
         ${state.checklistHistory.map(h => {
           const counts = {};
           (h.items||[]).forEach(it=>{ counts[it.status||"—"] = (counts[it.status||"—"]||0)+1; });
-          const summary = Object.entries(counts).map(([s,n])=>`${s} ${n}`).join("  ") || "sem itens";
+          const summary = (Object.entries(counts).map(([s,n])=>`${s} ${n}`).join("  ") || "sem itens") + (h.completedServiceOrders?.length ? `  ✅ ${h.completedServiceOrders.length} OS` : "");
           return `
           <div class="card" data-histentry="${h.id}" style="cursor:pointer">
             <div class="row-flex" style="justify-content:space-between">
@@ -1210,6 +1480,11 @@
                   ${it.pendencia?`<div style="color:var(--amber)">Pendência: ${esc(it.pendencia)}</div>`:""}
                   ${it.acao?`<div style="color:var(--muted)">Ação: ${esc(it.acao)}</div>`:""}
                 </div>`).join("")}
+              ${h.completedServiceOrders && h.completedServiceOrders.length ? `
+              <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+                <div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">OS marcadas como concluídas pelo colaborador</div>
+                ${h.completedServiceOrders.map(os=>`<div style="font-size:12px;padding:2px 0">✅ OS ${esc(os.osNumber)} — ${esc(os.description)||"—"}</div>`).join("")}
+              </div>` : ""}
             </div>
           </div>`;
         }).join("")}
@@ -1736,7 +2011,7 @@
         atraso: status==="presente" && $("#a_atraso").checked,
       };
       const btn = $("#saveAttendance"); btn.disabled = true; btn.textContent = "Salvando…";
-      const { error } = await supabase.from("attendance").upsert([attendanceToRow(employee.id, entry)], { onConflict:"employee_id,date" });
+      const { error } = await trackedCloudCall(supabase.from("attendance").upsert([attendanceToRow(employee.id, entry)], { onConflict:"employee_id,date" }));
       if(error){ alert("Não consegui salvar: "+error.message); btn.disabled = false; btn.textContent = "Salvar"; return; }
       employee.attendance = [...(employee.attendance||[]).filter(a=>a.date!==date), entry];
       close(); render();
@@ -1927,7 +2202,7 @@
         entriesByEmployee.push([employee.id, newEntries]);
       });
       const btn = $("#saveModal"); btn.disabled = true; btn.textContent = "Salvando…";
-      const { error } = await supabase.from("attendance").upsert(rows, { onConflict:"employee_id,date" });
+      const { error } = await trackedCloudCall(supabase.from("attendance").upsert(rows, { onConflict:"employee_id,date" }));
       if(error){ alert("Não consegui salvar: "+error.message); btn.disabled = false; btn.textContent = `Aplicar a ${employees.length} funcionário(s)`; return; }
       frequencySelected.clear();
       close();
@@ -1941,13 +2216,13 @@
     const pendingCount = state.timeOffRequests.filter(r=>r.status==="pendente").length;
     const lockedCount = state.employees.filter(e=>e.lockedAt).length;
     // Subtelas de "Mais" não são itens próprios do bottom nav — mantém "Mais" destacado nelas.
-    const MAIS_SUBTABS = ["frequencia","turnos","feriados","calendario","mapaferias","empresas","indicadores","dss","checklist"];
+    const MAIS_SUBTABS = ["frequencia","turnos","feriados","calendario","mapaferias","empresas","indicadores","dss","checklist","pcm"];
     const navTab = MAIS_SUBTABS.includes(state.tab) ? "mais" : state.tab;
     const mainHTML = {
       inicio: inicioHTML, solicitacoes: solicitacoesHTML, funcionarios: funcionariosHTML,
       frequencia: frequenciaHTML, turnos: turnosHTML, feriados: feriadosHTML,
       calendario: calendarioHTML, mapaferias: mapaFeriasHTML, empresas: empresasHTML,
-      indicadores: indicadoresHTML, dss: dssAdminHTML, checklist: checklistAdminHTML,
+      indicadores: indicadoresHTML, dss: dssAdminHTML, checklist: checklistAdminHTML, pcm: pcmAdminHTML,
     }[state.tab] || maisHTML;
     return `
       <header class="top">
@@ -2146,6 +2421,71 @@
       }
     } else {
       checklistHistoryLoaded = false;
+    }
+    if(state.tab==="pcm"){
+      $$("[data-pcmsub]").forEach(el => el.addEventListener("click", () => { state.pcmSubTab = el.dataset.pcmsub; render(); }));
+      if(state.pcmSubTab==="distribuidas"){
+        const searchInput = $("#pcmDistSearchInput");
+        if(searchInput) searchInput.addEventListener("input", e => { state.pcmDistribuidasSearch = e.target.value; render(); });
+        const statusFilter = $("#pcmDistStatusFilter");
+        if(statusFilter) statusFilter.addEventListener("change", e => { state.pcmDistribuidasStatusFilter = e.target.value; render(); });
+        const setorFilter = $("#pcmDistSetorFilter");
+        if(setorFilter) setorFilter.addEventListener("change", e => { state.pcmDistribuidasSetorFilter = e.target.value; render(); });
+        $$("[data-pcmscheduledate]").forEach(el => el.addEventListener("change", async () => {
+          const o = state.serviceOrders.find(x=>x.id===el.dataset.pcmscheduledate); if(!o) return;
+          if(o.scheduledDate && el.value && o.scheduledDate!==el.value) o.reprogrammedCount = (o.reprogrammedCount||0)+1;
+          o.scheduledDate = el.value;
+          render();
+          await cloudUpsertServiceOrder(o);
+        }));
+        $$("[data-pcmfinalizar]").forEach(el => el.addEventListener("click", async () => {
+          const o = state.serviceOrders.find(x=>x.id===el.dataset.pcmfinalizar); if(!o) return;
+          o.status = "realizada"; o.completedAt = new Date().toISOString();
+          render();
+          await cloudUpsertServiceOrder(o);
+        }));
+        $$("[data-pcmreabrir]").forEach(el => el.addEventListener("click", async () => {
+          const o = state.serviceOrders.find(x=>x.id===el.dataset.pcmreabrir); if(!o) return;
+          o.status = "distribuida"; o.completedAt = "";
+          render();
+          await cloudUpsertServiceOrder(o);
+        }));
+        $$("[data-pcmrevert]").forEach(el => el.addEventListener("click", async () => {
+          if(!confirm("Voltar esta OS pro backlog?")) return;
+          const o = state.serviceOrders.find(x=>x.id===el.dataset.pcmrevert); if(!o) return;
+          o.status = "backlog"; o.distributedAt = ""; o.scheduledDate = ""; o.reprogrammedCount = 0;
+          render();
+          await cloudUpsertServiceOrder(o);
+        }));
+      } else if(state.pcmSubTab==="painel"){
+        const dateInput = $("#pcmPainelDate");
+        if(dateInput) dateInput.addEventListener("change", e => { state.pcmPainelDate = e.target.value; render(); });
+      } else {
+        const searchInput = $("#pcmBacklogSearchInput");
+        if(searchInput) searchInput.addEventListener("input", e => { state.pcmBacklogSearch = e.target.value; render(); });
+        const setorFilter = $("#pcmBacklogSetorFilter");
+        if(setorFilter) setorFilter.addEventListener("change", e => { state.pcmBacklogSetorFilter = e.target.value; render(); });
+        $$("[data-pcmsetor]").forEach(el => el.addEventListener("change", async () => {
+          const o = state.serviceOrders.find(x=>x.id===el.dataset.pcmsetor); if(!o) return;
+          o.setor = el.value;
+          render();
+          await cloudUpsertServiceOrder(o);
+        }));
+        $$("[data-pcmdistribuir]").forEach(el => el.addEventListener("click", async () => {
+          const o = state.serviceOrders.find(x=>x.id===el.dataset.pcmdistribuir); if(!o || !o.setor) return;
+          o.status = "distribuida"; o.distributedAt = new Date().toISOString();
+          if(!o.scheduledDate) o.scheduledDate = pcmFirstScheduledDate(o.weekStart, o.schedule);
+          render();
+          await cloudUpsertServiceOrder(o);
+        }));
+        $$("[data-pcmdescartar]").forEach(el => el.addEventListener("click", async () => {
+          if(!confirm("Descartar esta OS do backlog? Ela não aparecerá mais em lugar nenhum do sistema.")) return;
+          const id = el.dataset.pcmdescartar;
+          state.serviceOrders = state.serviceOrders.filter(x=>x.id!==id);
+          render();
+          await cloudDeleteServiceOrder(id);
+        }));
+      }
     }
   }
 
