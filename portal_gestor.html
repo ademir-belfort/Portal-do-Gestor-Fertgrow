@@ -144,6 +144,19 @@
   const $ = (sel, root=document) => root.querySelector(sel);
   const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
   const esc = (s) => String(s??"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  // Ícones de linha fina (SVG inline) na barra de baixo, em vez dos emojis coloridos -- pedido
+  // explícito do usuário ("faz algo mais prêmio com ícones otimizados"). Mesmo conjunto do Portal do
+  // Colaborador (stroke="currentColor" herda a cor do estado ativo/inativo já definido em .n/.n.active).
+  const NAV_ICONS = {
+    home: `<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/>`,
+    inbox: `<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>`,
+    users: `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>`,
+    grid: `<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>`,
+    logout: `<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>`,
+  };
+  function navIcon(name){
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${NAV_ICONS[name]||""}</svg>`;
+  }
   // new Date().toISOString() converte pra UTC — perto da meia-noite local (Brasil, UTC-3) isso pode
   // devolver o dia de AMANHÃ. Monta a data a partir dos componentes locais em vez disso.
   const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
@@ -192,6 +205,7 @@
   function companyFromRow(r){ return { id:r.id, name:r.name, billing:r.billing||{}, roleRates:r.role_rates||[] }; }
   function companyToRow(c){ return { id:c.id, name:c.name, billing:c.billing||{}, role_rates:c.roleRates||[] }; }
   function shiftFromRow(r){ return { id:r.id, name:r.name, startTime:r.start_time, endTime:r.end_time, breakMinutes:r.break_minutes, hoursPerDay:r.hours_per_day, weeklyHours:r.weekly_hours, mode:r.mode, weekdays:r.weekdays||[], cycleWork:r.cycle_work, cycleRest:r.cycle_rest, cycleAnchor:r.cycle_anchor, worksOnHolidays:!!r.works_on_holidays }; }
+  function setorFromRow(r){ return { id:r.id, name:r.name }; }
   function shiftToRow(s){ return { id:s.id, name:s.name, start_time:s.startTime, end_time:s.endTime, break_minutes:Number(s.breakMinutes||0), hours_per_day:Number(s.hoursPerDay||0), weekly_hours:Number(s.weeklyHours||44), mode:s.mode, weekdays:s.weekdays||[], cycle_work:Number(s.cycleWork||1), cycle_rest:Number(s.cycleRest||1), cycle_anchor:s.cycleAnchor||null, works_on_holidays:!!s.worksOnHolidays }; }
   function holidayFromRow(r){ return { id:r.id, date:r.date, name:r.name, recurring:!!r.recurring }; }
   function holidayToRow(h){ return { id:h.id, date:h.date, name:h.name, recurring:!!h.recurring }; }
@@ -472,7 +486,7 @@
     authError: "", authInfo: "",
     session: null, profile: null,
     tab: "inicio",
-    companies: [], shifts: [], holidays: [], employees: [], timeOffRequests: [],
+    companies: [], shifts: [], setores: [], holidays: [], employees: [], timeOffRequests: [],
     dashboardDate: todayISO(),
     employeeSearch: "",
     frequencyDate: todayISO(),
@@ -628,6 +642,12 @@
       if(soErr) throw soErr;
       state.serviceOrders = (soRows||[]).map(serviceOrderFromRow);
     }catch(err){ state.serviceOrders = state.serviceOrders || []; }
+    // Idem: lista mestre de setores (cadastrada no painel desktop), fora do Promise.all pelo mesmo motivo.
+    try{
+      const { data: setorRows, error: setorErr } = await supabase.from("setores").select("*");
+      if(setorErr) throw setorErr;
+      state.setores = (setorRows||[]).map(setorFromRow);
+    }catch(err){ state.setores = state.setores || []; }
   }
   // Histórico de checklists preenchidos — sob demanda (só quando a subaba Histórico é aberta/filtrada),
   // não no boot. Sem o join do painel desktop (select("*, employees(name)")): o nome do funcionário já
@@ -1087,6 +1107,7 @@
 
   // ---------------- OS / PCM (Backlog/Distribuídas/Painel -- ver + Finalizar/Reprogramar; importar
   // o PDF/planilha do PCM continua só no painel desktop, tela grande é mais prático pra isso) --------
+  let pcmDistribuidasSelected = new Set(); // ids de OS distribuídas marcadas pra finalizar/reprogramar/voltar em lote
   function pcmAdminHTML(){
     const backlogCount = state.serviceOrders.filter(o=>o.status==="backlog").length;
     return `
@@ -1104,7 +1125,7 @@
   }
   function pcmBacklogHTML(){
     const q = (state.pcmBacklogSearch||"").trim().toLowerCase();
-    const setorOptions = [...new Set(state.employees.map(e=>e.setor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+    const setorOptions = state.setores.map(s=>s.name).sort((a,b)=>a.localeCompare(b,"pt-BR"));
     const rows = state.serviceOrders
       .filter(o=>o.status==="backlog")
       .filter(o=>!state.pcmBacklogSetorFilter || o.setor===state.pcmBacklogSetorFilter)
@@ -1140,13 +1161,14 @@
   function pcmDistribuidasHTML(){
     const q = (state.pcmDistribuidasSearch||"").trim().toLowerCase();
     const today = todayISO();
-    const setorOptions = [...new Set(state.employees.map(e=>e.setor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+    const setorOptions = state.setores.map(s=>s.name).sort((a,b)=>a.localeCompare(b,"pt-BR"));
     const rows = state.serviceOrders
       .filter(o=>o.status==="distribuida" || o.status==="realizada")
       .filter(o=>!state.pcmDistribuidasStatusFilter || o.status===state.pcmDistribuidasStatusFilter)
       .filter(o=>!state.pcmDistribuidasSetorFilter || o.setor===state.pcmDistribuidasSetorFilter)
       .filter(o=>!q || [o.osNumber,o.description,o.tag,o.assetName].join(" ").toLowerCase().includes(q))
       .sort((a,b)=> (a.scheduledDate||"9999").localeCompare(b.scheduledDate||"9999"));
+    [...pcmDistribuidasSelected].forEach(id => { if(!rows.some(r=>r.id===id)) pcmDistribuidasSelected.delete(id); });
     return `
       <div class="field" style="margin-bottom:8px"><input class="input" id="pcmDistSearchInput" placeholder="Buscar OS, TAG, descrição…" value="${esc(state.pcmDistribuidasSearch||"")}" /></div>
       <div class="row-flex" style="gap:8px;margin-bottom:14px">
@@ -1160,6 +1182,16 @@
           ${setorOptions.map(s=>`<option value="${esc(s)}" ${s===state.pcmDistribuidasSetorFilter?'selected':''}>${esc(s)}</option>`).join("")}
         </select>
       </div>
+      ${pcmDistribuidasSelected.size ? `
+      <div class="card" style="margin-bottom:10px;background:var(--surface2)">
+        <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">${pcmDistribuidasSelected.size} selecionada(s)</div>
+        <div class="row-flex" style="gap:8px;margin-bottom:8px">
+          <button class="btn small" id="pcmBulkFinalizarBtn" style="width:auto;flex:1">✅ Finalizar</button>
+          <button class="btn ghost small" id="pcmBulkRevertBtn" style="width:auto;color:var(--rose)">↩ Backlog</button>
+        </div>
+        <div class="field" style="margin-bottom:6px"><label>Reprogramar pra</label><input type="date" class="input" id="pcmBulkReprogramDate" /></div>
+        <button class="btn ghost small" id="pcmBulkReprogramBtn" style="width:100%">📅 Reprogramar selecionadas</button>
+      </div>` : ""}
       ${!rows.length ? `<p class="empty">Nenhuma OS distribuída ainda.</p>` : rows.map(o => {
         const atrasada = o.status==="distribuida" && o.scheduledDate && o.scheduledDate<today;
         const statusBadge = o.status==="realizada" ? `<span class="badge aprovado">✅ Realizada</span>`
@@ -1168,7 +1200,7 @@
         return `
         <div class="card" style="margin-bottom:10px">
           <div class="row-flex" style="justify-content:space-between;align-items:flex-start;gap:8px">
-            <div style="font-size:14px;font-weight:700">OS ${o.osNumber} — ${esc(o.description)||"—"}</div>
+            <label class="row-flex" style="gap:6px;align-items:center"><input type="checkbox" data-pcmdistsel="${o.id}" ${pcmDistribuidasSelected.has(o.id)?'checked':''} /><span style="font-size:14px;font-weight:700">OS ${o.osNumber} — ${esc(o.description)||"—"}</span></label>
             ${statusBadge}
           </div>
           <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(o.tag)||"—"}${o.assetName?` · ${esc(o.assetName)}`:""}</div>
@@ -2231,11 +2263,11 @@
       </header>
       <main>${mainHTML()}</main>
       <nav class="bottom">
-        <div class="n ${navTab==='inicio'?'active':''}" data-tab="inicio"><span class="ic">🏠</span>Início</div>
-        <div class="n ${navTab==='solicitacoes'?'active':''}" data-tab="solicitacoes"><span class="ic">📋</span>Solicitações${pendingCount>0?`<span class="nav-badge">${pendingCount}</span>`:""}</div>
-        <div class="n ${navTab==='funcionarios'?'active':''}" data-tab="funcionarios"><span class="ic">👥</span>Funcionários${lockedCount>0?`<span class="nav-badge">${lockedCount}</span>`:""}</div>
-        <div class="n ${navTab==='mais'?'active':''}" data-tab="mais"><span class="ic">☰</span>Mais</div>
-        <div class="n" data-tab="logout"><span class="ic">🚪</span>Sair</div>
+        <div class="n ${navTab==='inicio'?'active':''}" data-tab="inicio"><span class="ic">${navIcon('home')}</span>Início</div>
+        <div class="n ${navTab==='solicitacoes'?'active':''}" data-tab="solicitacoes"><span class="ic">${navIcon('inbox')}</span>Solicitações${pendingCount>0?`<span class="nav-badge">${pendingCount}</span>`:""}</div>
+        <div class="n ${navTab==='funcionarios'?'active':''}" data-tab="funcionarios"><span class="ic">${navIcon('users')}</span>Funcionários${lockedCount>0?`<span class="nav-badge">${lockedCount}</span>`:""}</div>
+        <div class="n ${navTab==='mais'?'active':''}" data-tab="mais"><span class="ic">${navIcon('grid')}</span>Mais</div>
+        <div class="n" data-tab="logout"><span class="ic">${navIcon('logout')}</span>Sair</div>
       </nav>`;
   }
 
@@ -2457,6 +2489,41 @@
           render();
           await cloudUpsertServiceOrder(o);
         }));
+        $$("[data-pcmdistsel]").forEach(el => el.addEventListener("change", () => {
+          if(el.checked) pcmDistribuidasSelected.add(el.dataset.pcmdistsel); else pcmDistribuidasSelected.delete(el.dataset.pcmdistsel);
+          render();
+        }));
+        const bulkFinalizarBtn = $("#pcmBulkFinalizarBtn");
+        if(bulkFinalizarBtn) bulkFinalizarBtn.addEventListener("click", async () => {
+          const targets = [...pcmDistribuidasSelected].map(id=>state.serviceOrders.find(o=>o.id===id)).filter(o=>o && o.status!=="realizada");
+          const completedAt = new Date().toISOString();
+          targets.forEach(o => { o.status = "realizada"; o.completedAt = completedAt; });
+          pcmDistribuidasSelected.clear();
+          render();
+          await Promise.all(targets.map(cloudUpsertServiceOrder));
+        });
+        const bulkReprogramBtn = $("#pcmBulkReprogramBtn");
+        if(bulkReprogramBtn) bulkReprogramBtn.addEventListener("click", async () => {
+          const newDate = $("#pcmBulkReprogramDate")?.value;
+          if(!newDate){ alert("Escolha a nova data antes de reprogramar."); return; }
+          const targets = [...pcmDistribuidasSelected].map(id=>state.serviceOrders.find(o=>o.id===id)).filter(Boolean);
+          targets.forEach(o => {
+            if(o.scheduledDate && o.scheduledDate!==newDate) o.reprogrammedCount = (o.reprogrammedCount||0)+1;
+            o.scheduledDate = newDate;
+          });
+          pcmDistribuidasSelected.clear();
+          render();
+          await Promise.all(targets.map(cloudUpsertServiceOrder));
+        });
+        const bulkRevertBtn = $("#pcmBulkRevertBtn");
+        if(bulkRevertBtn) bulkRevertBtn.addEventListener("click", async () => {
+          const targets = [...pcmDistribuidasSelected].map(id=>state.serviceOrders.find(o=>o.id===id)).filter(Boolean);
+          if(!confirm(`Voltar ${targets.length} OS selecionada(s) pro backlog?`)) return;
+          targets.forEach(o => { o.status = "backlog"; o.distributedAt = ""; o.scheduledDate = ""; o.reprogrammedCount = 0; });
+          pcmDistribuidasSelected.clear();
+          render();
+          await Promise.all(targets.map(cloudUpsertServiceOrder));
+        });
       } else if(state.pcmSubTab==="painel"){
         const dateInput = $("#pcmPainelDate");
         if(dateInput) dateInput.addEventListener("change", e => { state.pcmPainelDate = e.target.value; render(); });
