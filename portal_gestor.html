@@ -43,10 +43,11 @@
   .tabs2 .t{flex:0 0 auto;text-align:center;padding:8px 12px;border-radius:7px;font-size:13px;color:var(--muted);cursor:pointer;white-space:nowrap;}
   .tabs2 .t.active{background:var(--brand);color:#fff;font-weight:600;}
   nav.bottom{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);display:flex;max-width:480px;margin:0 auto;z-index:30;}
-  nav.bottom .n{flex:1;text-align:center;padding:10px 4px 12px;color:var(--muted);cursor:pointer;font-size:11px;position:relative;}
-  nav.bottom .n .ic{font-size:19px;display:block;margin-bottom:2px;}
+  nav.bottom .n{flex:1;text-align:center;padding:9px 3px 11px;color:var(--muted);cursor:pointer;font-size:10px;line-height:1.15;letter-spacing:-.01em;position:relative;}
+  nav.bottom .n .ic{display:flex;align-items:center;justify-content:center;height:20px;margin-bottom:2px;position:relative;overflow:visible;}
+  nav.bottom .n .ic svg{width:18px;height:18px;flex-shrink:0;}
   nav.bottom .n.active{color:var(--brand-light);}
-  .nav-badge{position:absolute;top:2px;right:calc(50% - 22px);background:var(--rose);color:#fff;border-radius:999px;min-width:16px;height:16px;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;}
+  .nav-badge{position:absolute;top:-4px;right:-6px;background:var(--rose);color:#fff;border-radius:999px;min-width:15px;height:15px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px;z-index:2;}
   h2.section{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:0 0 12px;font-weight:700;}
   .kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .kpi .label{font-size:11px;color:var(--muted);}
@@ -119,6 +120,29 @@
   window.addEventListener("beforeunload", (e) => {
     if(pendingCloudWrites > 0){ e.preventDefault(); e.returnValue = ""; }
   });
+
+  // Mesma proteção do painel desktop: mantém o token de sessão sempre renovado. O auto-refresh embutido
+  // do supabase-js roda num timer que pode atrasar ou nunca disparar quando o app fica muito tempo em
+  // segundo plano no celular (aba/app minimizado) -- isso já causou "permission denied" numa sessão
+  // longa do painel e só resolvia com logout/login (token mesmo vencido, não era bug de RLS/GRANT).
+  // Força uma checagem/renovação explícita sempre que o app volta a ficar visível, e periodicamente.
+  async function ensureFreshSession(){
+    if(!configured || !supabase) return;
+    try{
+      const { data, error } = await supabase.auth.getSession();
+      if(error || !data || !data.session) return;
+      const expiresAt = data.session.expires_at;
+      const now = Math.floor(Date.now()/1000);
+      if(expiresAt && (expiresAt - now) < 300) await supabase.auth.refreshSession();
+    }catch(err){ /* melhor esforço -- se falhar aqui, a próxima gravação real ainda reporta o erro visivelmente */ }
+  }
+  if(configured && supabase){
+    document.addEventListener("visibilitychange", () => {
+      if(document.visibilityState === "visible") ensureFreshSession();
+    });
+    setInterval(ensureFreshSession, 4*60*1000);
+  }
+
   // Mesmo problema real encontrado no painel desktop: o Supabase (PostgREST) trunca silenciosamente
   // um "select('*')" sem paginação no limite do projeto (1000 linhas por padrão) -- attendance é 1
   // linha por funcionário por dia, passa de 1000 rapidinho, e sem "order by" o recorte que volta é
@@ -1108,6 +1132,7 @@
   // ---------------- OS / PCM (Backlog/Distribuídas/Painel -- ver + Finalizar/Reprogramar; importar
   // o PDF/planilha do PCM continua só no painel desktop, tela grande é mais prático pra isso) --------
   let pcmDistribuidasSelected = new Set(); // ids de OS distribuídas marcadas pra finalizar/reprogramar/voltar em lote
+  let pcmBacklogSelected = new Set(); // ids de OS do backlog marcadas pra distribuir/descartar em lote
   function pcmAdminHTML(){
     const backlogCount = state.serviceOrders.filter(o=>o.status==="backlog").length;
     return `
@@ -1131,19 +1156,34 @@
       .filter(o=>!state.pcmBacklogSetorFilter || o.setor===state.pcmBacklogSetorFilter)
       .filter(o=>!q || [o.osNumber,o.description,o.tag,o.assetName].join(" ").toLowerCase().includes(q))
       .sort((a,b)=>a.osNumber-b.osNumber);
+    [...pcmBacklogSelected].forEach(id => { if(!rows.some(r=>r.id===id)) pcmBacklogSelected.delete(id); });
     return `
       <div class="field" style="margin-bottom:8px"><input class="input" id="pcmBacklogSearchInput" placeholder="Buscar OS, TAG, descrição…" value="${esc(state.pcmBacklogSearch||"")}" /></div>
-      <div class="field" style="margin-bottom:14px">
+      <div class="field" style="margin-bottom:10px">
         <select class="input" id="pcmBacklogSetorFilter">
           <option value="">Todos os setores</option>
           ${setorOptions.map(s=>`<option value="${esc(s)}" ${s===state.pcmBacklogSetorFilter?'selected':''}>${esc(s)}</option>`).join("")}
         </select>
       </div>
+      ${rows.length ? `<label class="row-flex" style="gap:6px;align-items:center;margin-bottom:10px;font-size:12.5px;color:var(--muted)"><input type="checkbox" id="pcmBacklogSelAll" ${rows.length && rows.every(r=>pcmBacklogSelected.has(r.id))?'checked':''} /> Selecionar todas (${rows.length})</label>` : ""}
+      ${pcmBacklogSelected.size ? `
+      <div class="card" style="margin-bottom:10px;background:var(--surface2)">
+        <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">${pcmBacklogSelected.size} selecionada(s)</div>
+        <div class="field" style="margin-bottom:8px"><select class="input" id="pcmBulkSetorSelect">
+          <option value="">Definir setor…</option>
+          ${setorOptions.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("")}
+        </select></div>
+        <button class="btn ghost small" id="pcmBulkSetorBtn" style="width:100%;margin-bottom:8px">Aplicar setor às selecionadas</button>
+        <div class="row-flex" style="gap:8px">
+          <button class="btn small" id="pcmBulkDistribuirBtn" style="width:auto;flex:1">✅ Distribuir</button>
+          <button class="btn ghost small" id="pcmBulkDescartarBtn" style="width:auto;color:var(--rose)">🗑 Descartar</button>
+        </div>
+      </div>` : ""}
       ${!rows.length ? `<p class="empty">Backlog vazio. Importe a Programação Semanal pelo painel desktop.</p>` : rows.map(o => {
         const ready = !!o.setor;
         return `
         <div class="card" style="margin-bottom:10px">
-          <div style="font-size:14px;font-weight:700">OS ${o.osNumber} — ${esc(o.description)||"—"}</div>
+          <label class="row-flex" style="gap:6px;align-items:center;font-size:14px;font-weight:700"><input type="checkbox" data-pcmbacklogsel="${o.id}" ${pcmBacklogSelected.has(o.id)?'checked':''} /><span>OS ${o.osNumber} — ${esc(o.description)||"—"}</span></label>
           <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(o.tag)||"—"}${o.assetName?` · ${esc(o.assetName)}`:""}</div>
           <div style="font-size:12px;color:var(--muted);margin-top:2px">Prevista: ${esc(pcmScheduleSummary(o.weekStart, o.schedule))}</div>
           <div class="field" style="margin-top:10px;margin-bottom:8px"><label>Setor</label><select class="input" data-pcmsetor="${o.id}">
@@ -2264,8 +2304,8 @@
       <main>${mainHTML()}</main>
       <nav class="bottom">
         <div class="n ${navTab==='inicio'?'active':''}" data-tab="inicio"><span class="ic">${navIcon('home')}</span>Início</div>
-        <div class="n ${navTab==='solicitacoes'?'active':''}" data-tab="solicitacoes"><span class="ic">${navIcon('inbox')}</span>Solicitações${pendingCount>0?`<span class="nav-badge">${pendingCount}</span>`:""}</div>
-        <div class="n ${navTab==='funcionarios'?'active':''}" data-tab="funcionarios"><span class="ic">${navIcon('users')}</span>Funcionários${lockedCount>0?`<span class="nav-badge">${lockedCount}</span>`:""}</div>
+        <div class="n ${navTab==='solicitacoes'?'active':''}" data-tab="solicitacoes"><span class="ic">${navIcon('inbox')}${pendingCount>0?`<span class="nav-badge">${pendingCount}</span>`:""}</span>Solicitações</div>
+        <div class="n ${navTab==='funcionarios'?'active':''}" data-tab="funcionarios"><span class="ic">${navIcon('users')}${lockedCount>0?`<span class="nav-badge">${lockedCount}</span>`:""}</span>Funcionários</div>
         <div class="n ${navTab==='mais'?'active':''}" data-tab="mais"><span class="ic">${navIcon('grid')}</span>Mais</div>
         <div class="n" data-tab="logout"><span class="ic">${navIcon('logout')}</span>Sair</div>
       </nav>`;
@@ -2552,6 +2592,46 @@
           render();
           await cloudDeleteServiceOrder(id);
         }));
+        const backlogSelAll = $("#pcmBacklogSelAll");
+        if(backlogSelAll) backlogSelAll.addEventListener("change", () => {
+          const q = (state.pcmBacklogSearch||"").trim().toLowerCase();
+          const visible = state.serviceOrders
+            .filter(o=>o.status==="backlog")
+            .filter(o=>!state.pcmBacklogSetorFilter || o.setor===state.pcmBacklogSetorFilter)
+            .filter(o=>!q || [o.osNumber,o.description,o.tag,o.assetName].join(" ").toLowerCase().includes(q));
+          if(backlogSelAll.checked) visible.forEach(o=>pcmBacklogSelected.add(o.id)); else visible.forEach(o=>pcmBacklogSelected.delete(o.id));
+          render();
+        });
+        $$("[data-pcmbacklogsel]").forEach(el => el.addEventListener("change", () => {
+          if(el.checked) pcmBacklogSelected.add(el.dataset.pcmbacklogsel); else pcmBacklogSelected.delete(el.dataset.pcmbacklogsel);
+          render();
+        }));
+        const bulkSetorBtn = $("#pcmBulkSetorBtn");
+        if(bulkSetorBtn) bulkSetorBtn.addEventListener("click", async () => {
+          const setorValue = $("#pcmBulkSetorSelect")?.value;
+          if(!setorValue){ alert("Escolha um setor antes de aplicar."); return; }
+          const targets = [...pcmBacklogSelected].map(id=>state.serviceOrders.find(o=>o.id===id)).filter(Boolean);
+          targets.forEach(o => { o.setor = setorValue; });
+          render();
+          await Promise.all(targets.map(cloudUpsertServiceOrder));
+        });
+        const bulkDistribuirBtn = $("#pcmBulkDistribuirBtn");
+        if(bulkDistribuirBtn) bulkDistribuirBtn.addEventListener("click", async () => {
+          const targets = [...pcmBacklogSelected].map(id=>state.serviceOrders.find(o=>o.id===id)).filter(o=>o && o.setor);
+          targets.forEach(o => { o.status = "distribuida"; o.distributedAt = new Date().toISOString(); if(!o.scheduledDate) o.scheduledDate = pcmFirstScheduledDate(o.weekStart, o.schedule); });
+          pcmBacklogSelected.clear();
+          render();
+          await Promise.all(targets.map(cloudUpsertServiceOrder));
+        });
+        const bulkDescartarBtn = $("#pcmBulkDescartarBtn");
+        if(bulkDescartarBtn) bulkDescartarBtn.addEventListener("click", async () => {
+          const ids = [...pcmBacklogSelected];
+          if(!confirm(`Descartar ${ids.length} OS selecionada(s) do backlog? Elas não aparecerão mais em lugar nenhum do sistema.`)) return;
+          state.serviceOrders = state.serviceOrders.filter(o=>!ids.includes(o.id));
+          pcmBacklogSelected.clear();
+          render();
+          await Promise.all(ids.map(cloudDeleteServiceOrder));
+        });
       }
     }
   }
