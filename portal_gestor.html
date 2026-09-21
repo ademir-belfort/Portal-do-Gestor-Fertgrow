@@ -12,6 +12,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<!-- Fraunces + Manrope: só usadas pelo gerador de Banners, pra desenhar texto bonito no <canvas> da
+     prévia/exportação -- o resto do app continua na fonte padrão. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,400..700&family=Manrope:wght@400;500;600;700;800&display=swap">
 <style>
   :root{
     --bg:#0a1410; --surface:#101d16; --surface2:#16261d; --border:#213328;
@@ -143,6 +147,46 @@
     setInterval(ensureFreshSession, 4*60*1000);
   }
 
+  // ---------------- instalação do app (PWA) -- mesmo mecanismo do Portal do Colaborador. A sessão do
+  // Supabase já fica salva sozinha entre uma abertura e outra (só pede senha de novo se der logout) --
+  // mas isso só é confiável quando o app está instalado na tela de início. Aberto como aba comum do
+  // navegador (Safari especialmente), o iOS pode limpar os dados salvos do site depois de um tempo sem
+  // uso, e aí parece que o login "não fica salvo" quando na verdade é o navegador limpando o dado. ------
+  let deferredInstallPrompt = null; // guardado quando o Chrome/Android dispara beforeinstallprompt
+  let installDismissed = false; // esconde o botão nesta sessão depois de instalar ou de mostrar a dica do iOS
+  function isIOSDevice(){ return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream; }
+  function isStandaloneApp(){ return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone===true; }
+  function installButtonHTML(){
+    if(isStandaloneApp() || installDismissed) return "";
+    if(deferredInstallPrompt) return `<button type="button" class="btn small" id="installAppBtn" style="width:auto;padding:8px 12px;white-space:nowrap">📲 Instalar app</button>`;
+    if(isIOSDevice()) return `<button type="button" class="btn ghost small" id="installAppHint" style="width:auto;padding:8px 12px;white-space:nowrap">📲 Instalar</button>`;
+    return "";
+  }
+  function wireInstallButtons(){
+    const installBtn = $("#installAppBtn");
+    if(installBtn) installBtn.addEventListener("click", async () => {
+      if(!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      if(choice.outcome==="accepted") installDismissed = true;
+      render();
+    });
+    const installHint = $("#installAppHint");
+    if(installHint) installHint.addEventListener("click", () => {
+      alert('Pra instalar no iPhone: toque no ícone de Compartilhar (o quadrado com a seta pra cima) e escolha "Adicionar à Tela de Início".');
+    });
+  }
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    if(state.view==="app" || state.view==="auth") render();
+  });
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null; installDismissed = true;
+    if(state.view==="app" || state.view==="auth") render();
+  });
+
   // Mesmo problema real encontrado no painel desktop: o Supabase (PostgREST) trunca silenciosamente
   // um "select('*')" sem paginação no limite do projeto (1000 linhas por padrão) -- attendance é 1
   // linha por funcionário por dia, passa de 1000 rapidinho, e sem "order by" o recorte que volta é
@@ -191,6 +235,41 @@
   function toISO(d){ return d.toISOString().slice(0,10); }
   function brDate(iso){ if(!iso) return "—"; const [y,m,d]=String(iso).slice(0,10).split("-"); return `${d}/${m}/${y}`; }
   function addDays(iso,n){ const d=new Date(iso+"T00:00:00"); d.setDate(d.getDate()+n); return toISO(d); }
+  function mondayOf(dateISO){
+    const d = new Date(dateISO+"T00:00:00");
+    const day = d.getDay(); // 0=domingo
+    const diff = (day===0? -6 : 1-day);
+    d.setDate(d.getDate()+diff);
+    return toISO(d);
+  }
+  // Semana ISO 8601 ("semana 38" etc., a mesma numeração que o PCM usa) -- ver mesma lógica no painel
+  // desktop. Guarda no formato nativo do <input type="week"> ("AAAA-Wnn").
+  function isoWeekOf(dateISO){
+    const d = new Date(dateISO+"T00:00:00");
+    const day = (d.getDay()+6)%7; // segunda=0 ... domingo=6
+    d.setDate(d.getDate()-day+3); // quinta-feira da mesma semana
+    const firstThursday = new Date(d.getFullYear(),0,4);
+    const fdDay = (firstThursday.getDay()+6)%7;
+    firstThursday.setDate(firstThursday.getDate()-fdDay+3);
+    const week = 1 + Math.round((d-firstThursday)/(7*86400000));
+    return { year: d.getFullYear(), week };
+  }
+  function isoWeekString(dateISO){
+    const { year, week } = isoWeekOf(dateISO);
+    return `${year}-W${String(week).padStart(2,"0")}`;
+  }
+  function isoWeekMonday(year, week){
+    const jan4 = new Date(year,0,4);
+    const jan4Day = (jan4.getDay()+6)%7;
+    const week1Monday = new Date(jan4); week1Monday.setDate(jan4.getDate()-jan4Day);
+    const monday = new Date(week1Monday); monday.setDate(week1Monday.getDate()+(week-1)*7);
+    return toISO(monday);
+  }
+  function parseWeekInput(value){
+    const m = /^(\d{4})-W(\d{2})$/.exec(value||"");
+    if(!m) return null;
+    return { year: Number(m[1]), week: Number(m[2]) };
+  }
   function addMonths(monthStr, delta){
     const [y,m] = monthStr.split("-").map(Number);
     const d = new Date(y, (m-1)+delta, 1);
@@ -287,8 +366,8 @@
     const dates = pcmScheduleDates(weekStart, schedule);
     return dates.length ? dates[0] : "";
   }
-  function employeeToRow(e){ return { id:e.id, name:e.name, email:e.email?e.email.trim().toLowerCase():null, cargo:e.cargo||"", company_id:e.companyId||null, shift_id:e.shiftId||null, admissao:e.admissao||null, status:e.status||"Ativo", rates:e.rates||{}, ferias_saldo_dias: e.feriasSaldoDias ?? 30 }; }
-  function employeeFromRow(r, attendance, shiftHistory, profile){ return { id:r.id, name:r.name, email:r.email||"", cargo:r.cargo||"", companyId:r.company_id||"", shiftId:r.shift_id||"", admissao:r.admissao||"", status:r.status||"Ativo", rates:r.rates||{}, feriasSaldoDias: r.ferias_saldo_dias ?? 30, attendance: attendance||[], shiftHistory: shiftHistory||[], profileId: profile?.id||null, lockedAt: profile?.locked_at||null }; }
+  function employeeToRow(e){ return { id:e.id, name:e.name, email:e.email?e.email.trim().toLowerCase():null, cargo:e.cargo||"", company_id:e.companyId||null, shift_id:e.shiftId||null, admissao:e.admissao||null, status:e.status||"Ativo", rates:e.rates||{}, ferias_saldo_dias: e.feriasSaldoDias ?? 30, birth_date: e.birthDate||null }; }
+  function employeeFromRow(r, attendance, shiftHistory, profile){ return { id:r.id, name:r.name, email:r.email||"", cargo:r.cargo||"", companyId:r.company_id||"", shiftId:r.shift_id||"", admissao:r.admissao||"", status:r.status||"Ativo", rates:r.rates||{}, feriasSaldoDias: r.ferias_saldo_dias ?? 30, birthDate: r.birth_date||"", attendance: attendance||[], shiftHistory: shiftHistory||[], profileId: profile?.id||null, lockedAt: profile?.locked_at||null }; }
   function shiftHistoryRowToObj(r){ return { id:r.id, shiftId:r.shift_id, effectiveFrom:r.effective_from }; }
   function shiftHistoryObjToRow(employeeId, h){ return { employee_id:employeeId, shift_id:h.shiftId||null, effective_from:h.effectiveFrom }; }
   function attendanceToRow(employeeId, a){ return { id:a.id, employee_id:employeeId, date:a.date, turno:a.turno||"", hours:Number(a.hours||0), status: attendanceStatus(a), expected_hours: a.expectedHours ?? null, justification: a.justification||"", atestado: !!a.atestado, atraso: !!a.atraso }; }
@@ -527,8 +606,11 @@
     serviceOrders: [],
     pcmSubTab: "backlog",
     pcmBacklogSearch: "", pcmBacklogSetorFilter: "",
-    pcmDistribuidasSearch: "", pcmDistribuidasStatusFilter: "", pcmDistribuidasSetorFilter: "",
-    pcmPainelDate: "",
+    pcmDistribuidasSearch: "", pcmDistribuidasSetorFilter: "", pcmDistribuidasDateFilter: "",
+    pcmFinalizadasSearch: "", pcmFinalizadasSetorFilter: "", pcmFinalizadasDateFilter: "",
+    pcmPainelDate: "", pcmPainelViewMode: "dia", pcmPainelWeek: "", pcmPainelMonth: "",
+    bannerType: "aniversario",
+    bannerNome: "", bannerCargo: "", bannerData1: "", bannerData2: "", bannerAnos: "",
   };
   let checklistHistoryLoaded = false; // recarrega o histórico sempre que a subaba é reaberta
 
@@ -571,6 +653,11 @@
       <header class="top"><div class="brand">Fertgrow Gestão</div><div class="who">Acesso restrito a administradores</div></header>
       <main>
         ${state.authError ? `<div class="msg err">${esc(state.authError)}</div>` : ""}
+        ${!isStandaloneApp() ? `
+        <div class="card" style="background:var(--surface2);margin-bottom:10px">
+          <p style="margin:0;font-size:12.5px;color:var(--muted)">📲 Caindo aqui toda vez mesmo sem sair? Instale o app na tela de início do celular — assim o login fica salvo e só pede senha de novo se você tocar em "Sair".</p>
+          ${installButtonHTML() ? `<div style="margin-top:8px">${installButtonHTML()}</div>` : ""}
+        </div>` : ""}
         <div class="card">
           <div class="field"><label>E-mail</label><input type="email" class="input" id="auth_email" autocomplete="email" /></div>
           <div class="field"><label>Senha</label><input type="password" class="input" id="auth_password" autocomplete="current-password" /></div>
@@ -783,9 +870,16 @@
   async function resetEmployeePassword(employee){
     if(!employee || !confirm(`Resetar a senha de ${employee.name}? Uma senha temporária nova vai ser gerada.`)) return;
     try{
+      // Busca a sessão FRESCA na hora de chamar, em vez de usar state.session (só setado uma vez no
+      // login) -- essa Edge Function confere o token de acesso de verdade, então um token velho (sessão
+      // aberta há muito tempo no celular) batia "Sessão inválida ou expirada" mesmo o gestor continuando
+      // logado normalmente no resto do app. Mesmo bug e mesma correção do painel desktop.
+      await ensureFreshSession();
+      const { data: { session: freshSession } } = await supabase.auth.getSession();
+      if(!freshSession){ alert("Sua sessão expirou -- faça login de novo e tente outra vez."); return; }
       const resp = await fetch(`${SUPABASE_URL}/functions/v1/admin-reset-password`, {
         method: "POST",
-        headers: { "Content-Type":"application/json", "Authorization": `Bearer ${state.session.access_token}` },
+        headers: { "Content-Type":"application/json", "Authorization": `Bearer ${freshSession.access_token}` },
         body: JSON.stringify({ employeeId: employee.id }),
       });
       const result = await resp.json();
@@ -1069,7 +1163,7 @@
       { ic:"🔄", lbl:"Turnos", tab:"turnos" }, { ic:"📅", lbl:"Feriados", tab:"feriados" },
       { ic:"🗓️", lbl:"Calendário", tab:"calendario" }, { ic:"🏖️", lbl:"Mapa de Férias", tab:"mapaferias" }, { ic:"📊", lbl:"Indicadores", tab:"indicadores" },
       { ic:"✅", lbl:"Checklist", tab:"checklist" }, { ic:"🦺", lbl:"DSS", tab:"dss" }, { ic:"🏢", lbl:"Empresas", tab:"empresas" },
-      { ic:"🔧", lbl:"OS / PCM", tab:"pcm" },
+      { ic:"🔧", lbl:"OS / PCM", tab:"pcm" }, { ic:"📣", lbl:"Banners", tab:"banners" },
     ];
     return `
       <h2 class="section">Mais</h2>
@@ -1077,6 +1171,384 @@
         ${items.map(i=>`<div class="menu-row" ${i.tab?`data-tab="${i.tab}"`:""} style="${i.tab?"cursor:pointer":"opacity:.5"}"><div><span class="ic">${i.ic}</span>${i.lbl}</div><span class="arrow">${i.tab?"›":"—"}</span></div>`).join("")}
       </div>
     `;
+  }
+
+  // ---------------- Banners (aniversário / ano de empresa / férias) -- mesmo gerador do painel
+  // desktop (canvas próprio, sem depender de serviço externo), só com a UI em coluna única pro celular.
+  // Cada tipo tem um layout de verdade diferente: aniversário e ano de empresa são comemorativos (um
+  // foca no nome, o outro numa medalha com o número de anos), férias é compacto e só informativo.
+  const BANNER_MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+  function bnFormatLong(iso){
+    if(!iso) return "";
+    const [y,m,d] = iso.split("-").map(Number);
+    return `${d} de ${BANNER_MESES[m-1]}`;
+  }
+  function bnFitFont(ctx, text, maxWidth, maxSize, minSize, weight, family){
+    let size = maxSize;
+    ctx.font = `${weight} ${size}px "${family}"`;
+    while(size > minSize && ctx.measureText(text).width > maxWidth){
+      size -= 2;
+      ctx.font = `${weight} ${size}px "${family}"`;
+    }
+    return size;
+  }
+  function bnRoundRectPath(ctx,x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+  // Só primeiro + último nome no banner -- nome completo (com os do meio) estourava a largura em
+  // sobrenomes compostos, mesmo com o fitFont reduzindo a fonte até o mínimo.
+  function bnShortName(name){
+    const parts = (name||"").trim().split(/\s+/).filter(Boolean);
+    if(parts.length<=1) return parts[0]||"";
+    return parts[0] + " " + parts[parts.length-1];
+  }
+  // Paleta clara + verde da marca, alinhada com os banners que a Fertgrow já usa hoje (fundo claro,
+  // balões verde/branco, confete dourado, tipografia bold sans) -- a versão anterior (fundo escuro +
+  // serifada + dourado) lia como cartão de Natal, não como o material da empresa.
+  function bnWatermarkArcs(ctx, W, H, color){
+    ctx.save();
+    ctx.strokeStyle = color; ctx.lineWidth = 3;
+    [[W*0.18,H*0.0,520],[W*0.9,H*0.16,440],[W*0.02,H*0.86,480],[W*0.98,H*1.02,520]].forEach(([cx,cy,r])=>{
+      ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke();
+    });
+    ctx.restore();
+  }
+  function bnConfetti(ctx, pieces, color){
+    pieces.forEach(([x,y,len,ang])=>{
+      ctx.save(); ctx.translate(x,y); ctx.rotate(ang);
+      ctx.fillStyle = color; ctx.fillRect(-len/2,-3,len,6);
+      ctx.restore();
+    });
+  }
+  function bnBalloon(ctx, cx, cy, w, h, color, highlight){
+    const grad = ctx.createRadialGradient(cx-w*0.26,cy-h*0.3,w*0.05,cx,cy,w*0.78);
+    grad.addColorStop(0,highlight); grad.addColorStop(1,color);
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.ellipse(cx,cy,w/2,h/2,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(cx-7,cy+h/2-4); ctx.lineTo(cx+7,cy+h/2-4); ctx.lineTo(cx,cy+h/2+14);
+    ctx.closePath(); ctx.fill();
+  }
+  // Três balões meio cortados pela borda (igual ao material de referência) -- "dir" espelha o cacho
+  // pro lado direito, pra usar o mesmo helper nos dois cantos.
+  function bnBalloonCluster(ctx, cx, cy, green, dir){
+    bnBalloon(ctx, cx-40*dir, cy+10, 130, 160, green, "#4fb876");
+    bnBalloon(ctx, cx+55*dir, cy-30, 110, 140, "#f7f6f1", "#ffffff");
+    bnBalloon(ctx, cx+10*dir, cy+70, 100, 128, green, "#4fb876");
+  }
+  function bnWrapCentered(ctx, text, cx, y, maxWidth, lineHeight){
+    const words = text.split(" ");
+    let line = "", lines = [];
+    words.forEach(w=>{
+      const test = line ? line+" "+w : w;
+      if(ctx.measureText(test).width > maxWidth && line){ lines.push(line); line = w; }
+      else line = test;
+    });
+    if(line) lines.push(line);
+    const startY = y - (lines.length-1)*lineHeight/2;
+    lines.forEach((l,i)=>ctx.fillText(l, cx, startY + i*lineHeight));
+  }
+  function bnWordmark(ctx, cx, y, logoImg, color){
+    ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+    if(logoImg){
+      const maxH=84, maxW=420;
+      let lw=logoImg.width, lh=logoImg.height;
+      const scale = Math.min(maxH/lh, maxW/lw, 1);
+      lw*=scale; lh*=scale;
+      ctx.drawImage(logoImg, cx-lw/2, y-lh, lw, lh);
+    } else {
+      ctx.fillStyle = color;
+      ctx.font = `800 34px "Manrope"`;
+      ctx.fillText("FERTGROW", cx, y);
+    }
+  }
+  const BN_GREEN = "#0B6B33", BN_GREEN_LIGHT = "#AFD676", BN_DARK = "#17291d", BN_MUTED = "rgba(23,41,29,0.55)", BN_BG = "#f5f4ef";
+  function drawAniversarioBanner(ctx, W, H, data, logoImg){
+    ctx.fillStyle = BN_BG; ctx.fillRect(0,0,W,H);
+    bnWatermarkArcs(ctx, W, H, "rgba(23,41,29,0.06)");
+    bnConfetti(ctx, [[130,70,26,0.3],[900,50,22,-0.5],[820,150,18,0.9],[80,190,16,-0.2],[960,230,14,0.6],[200,40,18,-0.7]], "#cda029");
+    bnBalloonCluster(ctx, W*0.04, H*0.94, BN_GREEN, 1);
+    bnBalloonCluster(ctx, W*0.98, H*0.9, BN_GREEN, -1);
+
+    bnWordmark(ctx, W/2, 190, logoImg, BN_DARK);
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = BN_GREEN;
+    ctx.font = `800 66px "Manrope"`;
+    ctx.fillText("Feliz aniversário!", W/2, 330);
+
+    const nome = (bnShortName(data.nome)||"Nome do colaborador").toUpperCase();
+    const nameSize = bnFitFont(ctx, nome, 880, 52, 32, 800, "Manrope");
+    ctx.fillStyle = BN_DARK; ctx.font = `800 ${nameSize}px "Manrope"`;
+    ctx.fillText(nome, W/2, 410);
+
+    if(data.cargo){
+      ctx.save(); ctx.fillStyle = BN_MUTED; ctx.font = `600 22px "Manrope"`; ctx.letterSpacing = "2px";
+      ctx.fillText(data.cargo.toUpperCase(), W/2, 448); ctx.restore();
+    }
+
+    ctx.fillStyle = BN_DARK; ctx.font = `500 32px "Manrope"`;
+    bnWrapCentered(ctx, "Que o novo ciclo venha acompanhado de saúde e alegrias!", W/2, 530, 800, 42);
+
+    if(data.data1){
+      ctx.fillStyle = BN_MUTED; ctx.font = `600 22px "Manrope"`;
+      ctx.fillText(bnFormatLong(data.data1), W/2, 630);
+    }
+
+    ctx.fillStyle = BN_MUTED; ctx.font = `500 18px "Manrope"`;
+    ctx.fillText("Equipe Fertgrow", W/2, H-70);
+  }
+  function drawAnoEmpresaBanner(ctx, W, H, data, logoImg){
+    ctx.fillStyle = BN_BG; ctx.fillRect(0,0,W,H);
+    bnWatermarkArcs(ctx, W, H, "rgba(23,41,29,0.06)");
+    bnBalloonCluster(ctx, W*0.02, H*0.1, BN_GREEN, 1);
+    bnBalloonCluster(ctx, W*0.99, H*0.92, BN_GREEN, -1);
+
+    bnWordmark(ctx, W/2, 140, logoImg, BN_DARK);
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = BN_GREEN;
+    ctx.font = `800 68px "Manrope"`;
+    ctx.fillText("Parabéns!", W/2, 400);
+
+    const nome = (bnShortName(data.nome)||"Nome do colaborador").toUpperCase();
+    const nameSize = bnFitFont(ctx, nome, 880, 46, 28, 800, "Manrope");
+    ctx.fillStyle = BN_DARK; ctx.font = `800 ${nameSize}px "Manrope"`;
+    ctx.fillText(nome, W/2, 460);
+
+    if(data.cargo){
+      ctx.save(); ctx.fillStyle = BN_MUTED; ctx.font = `600 20px "Manrope"`; ctx.letterSpacing = "2px";
+      ctx.fillText(data.cargo.toUpperCase(), W/2, 496); ctx.restore();
+    }
+
+    const anos = data.anos || "1";
+    ctx.fillStyle = BN_GREEN; ctx.font = `800 170px "Manrope"`;
+    ctx.fillText(String(anos), W/2, 700);
+
+    const label = Number(anos)===1 ? "1 ANO DE EMPRESA" : `${anos} ANOS DE EMPRESA`;
+    ctx.font = `800 34px "Manrope"`;
+    const labelW = ctx.measureText(label).width;
+    ctx.fillStyle = BN_GREEN_LIGHT;
+    bnRoundRectPath(ctx, W/2-labelW/2-18, 730, labelW+36, 52, 8); ctx.fill();
+    ctx.fillStyle = BN_GREEN;
+    ctx.fillText(label, W/2, 766);
+
+    ctx.fillStyle = BN_DARK; ctx.font = `500 30px "Manrope"`;
+    bnWrapCentered(ctx, "Mais um ano compartilhando desafios e resultados.", W/2, 860, 780, 40);
+
+    ctx.fillStyle = BN_MUTED; ctx.font = `500 18px "Manrope"`;
+    ctx.fillText("Equipe Fertgrow", W/2, H-70);
+  }
+  function drawFeriasBanner(ctx, W, H, data, logoImg){
+    ctx.fillStyle = BN_BG; ctx.fillRect(0,0,W,H);
+    bnWatermarkArcs(ctx, W, H, "rgba(23,41,29,0.05)");
+
+    bnWordmark(ctx, W/2, 150, logoImg, BN_DARK);
+
+    ctx.textAlign = "center";
+    ctx.save(); ctx.fillStyle = BN_GREEN; ctx.font = `800 24px "Manrope"`; ctx.letterSpacing = "3px";
+    ctx.fillText("AVISO DE FÉRIAS", W/2, 210); ctx.restore();
+
+    const nome = (bnShortName(data.nome)||"Nome do colaborador").toUpperCase();
+    const nameSize = bnFitFont(ctx, nome, 880, 58, 34, 800, "Manrope");
+    ctx.fillStyle = BN_DARK; ctx.font = `800 ${nameSize}px "Manrope"`;
+    ctx.fillText(nome, W/2, 610);
+
+    if(data.cargo){
+      ctx.save(); ctx.fillStyle = BN_MUTED; ctx.font = `600 24px "Manrope"`; ctx.letterSpacing = "2px";
+      ctx.fillText(data.cargo.toUpperCase(), W/2, 655); ctx.restore();
+    }
+
+    ctx.strokeStyle = "rgba(23,41,29,0.18)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(W/2-90,710); ctx.lineTo(W/2+90,710); ctx.stroke();
+
+    const col1X = W/2-200, col2X = W/2+200;
+    ctx.save(); ctx.fillStyle = BN_MUTED; ctx.font = `700 18px "Manrope"`; ctx.letterSpacing = "2px";
+    ctx.fillText("SAÍDA", col1X, 780);
+    ctx.fillText("RETORNO", col2X, 780);
+    ctx.restore();
+    ctx.fillStyle = BN_DARK; ctx.font = `700 42px "Manrope"`;
+    ctx.fillText(bnFormatLong(data.data1)||"—", col1X, 835);
+    ctx.fillStyle = BN_GREEN; ctx.font = `700 42px "Manrope"`;
+    ctx.fillText(bnFormatLong(data.data2)||"—", col2X, 835);
+
+    ctx.strokeStyle = "rgba(23,41,29,0.15)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(W/2,750); ctx.lineTo(W/2,845); ctx.stroke();
+
+    ctx.fillStyle = BN_MUTED; ctx.font = `500 18px "Manrope"`;
+    ctx.fillText("Equipe Fertgrow", W/2, H-70);
+  }
+  // Detecta sozinho quem faz aniversário, aniversário de empresa ou começa férias HOJE -- pedido
+  // explícito do usuário: "nada manual, quero só baixar". bnAutoMatches guarda o resultado do último
+  // render pro clique no botão (que só manda o índice) achar de volta o funcionário/dados certos.
+  let bnAutoMatches = [];
+  function bnComputeAutoMatches(){
+    const today = todayISO();
+    const now = new Date(); now.setHours(0,0,0,0);
+    const list = [];
+    state.employees.filter(e=>e.status==="Ativo").forEach(e => {
+      [
+        e.birthDate ? { date:e.birthDate, kind:"aniversario" } : null,
+        e.admissao ? { date:e.admissao, kind:"ano_empresa" } : null,
+      ].filter(Boolean).forEach(({date,kind}) => {
+        const [y,m,d] = date.split("-").map(Number);
+        if(!y || !m || !d || m!==(now.getMonth()+1) || d!==now.getDate()) return;
+        const years = now.getFullYear() - y;
+        if(kind==="ano_empresa" && years<=0) return;
+        list.push(kind==="aniversario" ? { kind, employee:e } : { kind, employee:e, years });
+      });
+    });
+    state.timeOffRequests.filter(r=>r.type==="ferias" && r.status==="aprovado" && r.dateStart===today).forEach(r => {
+      const employee = state.employees.find(e=>e.id===r.employeeId);
+      if(employee) list.push({ kind:"ferias", employee, request:r });
+    });
+    bnAutoMatches = list;
+    return list;
+  }
+  function bnAutoAvisoHTML(){
+    const matches = bnComputeAutoMatches();
+    const todayLabel = new Date().toLocaleDateString("pt-BR",{weekday:"long", day:"2-digit", month:"long"});
+    return `
+      <div class="card" style="margin-bottom:14px">
+        <div style="font-weight:700;margin-bottom:2px">Hoje</div>
+        <p style="font-size:11.5px;color:var(--muted);margin:0 0 10px;text-transform:capitalize">${esc(todayLabel)}</p>
+        ${!matches.length ? `<p class="empty" style="margin:0">Nenhum aniversário, aniversário de empresa ou início de férias hoje.</p>` : `
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${matches.map((m,i) => {
+            const label = m.kind==="aniversario" ? "🎂 Aniversário"
+              : m.kind==="ano_empresa" ? `🏆 ${m.years} ano${m.years===1?"":"s"} de empresa`
+              : `🌿 Início das férias — volta em ${brDate(m.request.dateEnd)}`;
+            return `<div class="row-flex" style="justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;background:var(--surface2);border-radius:10px">
+              <div><b style="font-size:14px">${esc(m.employee.name)}</b><div style="font-size:12px;color:var(--muted)">${label}</div></div>
+              <button class="btn small" style="width:auto" data-bnauto="${i}">⬇ Baixar</button>
+            </div>`;
+          }).join("")}
+        </div>`}
+      </div>
+    `;
+  }
+  function bannersHTML(){
+    const type = state.bannerType;
+    const canvasW = 1080, canvasH = 1350;
+    return `
+      <div class="row-flex" style="justify-content:space-between;margin-bottom:10px">
+        <h2 class="section" style="margin:0">Banners</h2>
+        <span class="link" data-tab="mais">← Mais</span>
+      </div>
+      ${bnAutoAvisoHTML()}
+      <div class="tabs2" style="margin-bottom:14px">
+        <div class="t ${type==='aniversario'?'active':''}" data-bannertype="aniversario">Aniversário</div>
+        <div class="t ${type==='ano_empresa'?'active':''}" data-bannertype="ano_empresa">Ano de empresa</div>
+        <div class="t ${type==='ferias'?'active':''}" data-bannertype="ferias">Férias</div>
+      </div>
+      <div class="field"><label>Nome do colaborador</label><input class="input" id="bn_nome" value="${esc(state.bannerNome)}" /></div>
+      <div class="field" style="margin-top:10px"><label>Cargo / setor</label><input class="input" id="bn_cargo" value="${esc(state.bannerCargo)}" /></div>
+      ${type==="aniversario" ? `
+      <div class="field" style="margin-top:10px"><label>Data de aniversário</label><input type="date" class="input" id="bn_data1" value="${state.bannerData1||todayISO()}" /></div>
+      ` : type==="ano_empresa" ? `
+      <div class="field" style="margin-top:10px"><label>Quantos anos de empresa</label><input type="number" min="1" class="input" id="bn_anos" value="${esc(state.bannerAnos||"1")}" /></div>
+      ` : `
+      <div class="row-flex" style="gap:10px;margin-top:10px">
+        <div class="field" style="flex:1"><label>Saída</label><input type="date" class="input" id="bn_data1" value="${state.bannerData1||todayISO()}" /></div>
+        <div class="field" style="flex:1"><label>Retorno</label><input type="date" class="input" id="bn_data2" value="${state.bannerData2||todayISO()}" /></div>
+      </div>
+      `}
+      <div class="field" style="margin-top:10px">
+        <label>Logo da empresa (opcional)</label>
+        <div class="row-flex" style="gap:10px;align-items:center">
+          <input type="file" id="bn_logo" accept="image/png,image/jpeg,image/svg+xml,image/webp" />
+          ${bannerLogoImg ? `<button class="btn ghost small" id="bn_logo_clear" type="button" style="width:auto">Remover</button>` : ""}
+        </div>
+      </div>
+      <div style="display:flex;justify-content:center;margin-top:16px">
+        <canvas id="bn_canvas" width="${canvasW}" height="${canvasH}" style="width:100%;max-width:340px;height:auto;border-radius:14px;box-shadow:0 8px 24px -10px rgba(0,0,0,.4);display:block"></canvas>
+      </div>
+      <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:6px">${canvasW} × ${canvasH}px</p>
+      <button class="btn" id="bn_download" style="margin-top:12px">⬇ Baixar banner (PNG)</button>
+      <p id="bn_status" style="font-size:12px;margin-top:8px;min-height:16px;color:var(--muted);text-align:center"></p>
+    `;
+  }
+  let bannerLogoImg = null; // logo enviada pro banner -- só em memória, não persiste
+  function bnDraw(){
+    const canvas = $("#bn_canvas"); if(!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const data = {
+      nome: ($("#bn_nome")?.value||"").trim(),
+      cargo: ($("#bn_cargo")?.value||"").trim(),
+      data1: $("#bn_data1")?.value || "",
+      data2: $("#bn_data2")?.value || "",
+      anos: $("#bn_anos")?.value || "",
+    };
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if(state.bannerType==="aniversario") drawAniversarioBanner(ctx, canvas.width, canvas.height, data, bannerLogoImg);
+    else if(state.bannerType==="ano_empresa") drawAnoEmpresaBanner(ctx, canvas.width, canvas.height, data, bannerLogoImg);
+    else drawFeriasBanner(ctx, canvas.width, canvas.height, data, bannerLogoImg);
+  }
+  function bnSlug(s){
+    return (s||"banner").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"") || "banner";
+  }
+  function wireBanners(){
+    $$("[data-bannertype]").forEach(el => el.addEventListener("click", () => { state.bannerType = el.dataset.bannertype; render(); }));
+    $$("[data-bnauto]").forEach(el => el.addEventListener("click", () => {
+      const m = bnAutoMatches[Number(el.dataset.bnauto)];
+      if(!m) return;
+      state.bannerType = m.kind;
+      state.bannerNome = m.employee.name;
+      state.bannerCargo = m.employee.cargo || "";
+      if(m.kind==="aniversario") state.bannerData1 = todayISO();
+      else if(m.kind==="ano_empresa") state.bannerAnos = String(m.years);
+      else { state.bannerData1 = m.request.dateStart; state.bannerData2 = m.request.dateEnd; }
+      render();
+      setTimeout(() => { $("#bn_download")?.click(); }, 250);
+    }));
+    const nome = $("#bn_nome"); if(nome) nome.addEventListener("input", () => { state.bannerNome = nome.value; bnDraw(); });
+    const cargo = $("#bn_cargo"); if(cargo) cargo.addEventListener("input", () => { state.bannerCargo = cargo.value; bnDraw(); });
+    const data1 = $("#bn_data1"); if(data1) data1.addEventListener("change", () => { state.bannerData1 = data1.value; bnDraw(); });
+    const data2 = $("#bn_data2"); if(data2) data2.addEventListener("change", () => { state.bannerData2 = data2.value; bnDraw(); });
+    const anos = $("#bn_anos"); if(anos) anos.addEventListener("input", () => { state.bannerAnos = anos.value; bnDraw(); });
+    const logo = $("#bn_logo");
+    if(logo) logo.addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => { bannerLogoImg = img; bnDraw(); render(); };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+    const logoClear = $("#bn_logo_clear");
+    if(logoClear) logoClear.addEventListener("click", () => { bannerLogoImg = null; render(); });
+    const downloadBtn = $("#bn_download");
+    if(downloadBtn) downloadBtn.addEventListener("click", () => {
+      const canvas = $("#bn_canvas"); if(!canvas) return;
+      canvas.toBlob((blob) => {
+        if(!blob){ $("#bn_status").textContent = "Não consegui gerar a imagem."; return; }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `banner-${state.bannerType}-${bnSlug($("#bn_nome").value)}.png`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        $("#bn_status").textContent = "Banner baixado!";
+      }, "image/png");
+    });
+    bnDraw();
+    if(document.fonts && document.fonts.ready){
+      Promise.all([
+        document.fonts.load('700 90px "Fraunces"'),
+        document.fonts.load('italic 600 52px "Fraunces"'),
+        document.fonts.load('800 34px "Manrope"'),
+      ]).then(bnDraw).catch(()=>{});
+      document.fonts.ready.then(bnDraw);
+    }
   }
 
   // ---------------- Indicadores + relatório gerencial (PDF) ----------------
@@ -1135,6 +1607,8 @@
   let pcmBacklogSelected = new Set(); // ids de OS do backlog marcadas pra distribuir/descartar em lote
   function pcmAdminHTML(){
     const backlogCount = state.serviceOrders.filter(o=>o.status==="backlog").length;
+    const distribuidasCount = state.serviceOrders.filter(o=>o.status==="distribuida").length;
+    const finalizadasCount = state.serviceOrders.filter(o=>o.status==="realizada").length;
     return `
       <div class="row-flex" style="justify-content:space-between;margin-bottom:10px">
         <h2 class="section" style="margin:0">OS / PCM</h2>
@@ -1142,10 +1616,11 @@
       </div>
       <div class="tabs2">
         <div class="t ${state.pcmSubTab==='backlog'?'active':''}" data-pcmsub="backlog">Backlog${backlogCount?` (${backlogCount})`:""}</div>
-        <div class="t ${state.pcmSubTab==='distribuidas'?'active':''}" data-pcmsub="distribuidas">Distribuídas</div>
+        <div class="t ${state.pcmSubTab==='distribuidas'?'active':''}" data-pcmsub="distribuidas">Distribuídas${distribuidasCount?` (${distribuidasCount})`:""}</div>
+        <div class="t ${state.pcmSubTab==='finalizadas'?'active':''}" data-pcmsub="finalizadas">Finalizadas${finalizadasCount?` (${finalizadasCount})`:""}</div>
         <div class="t ${state.pcmSubTab==='painel'?'active':''}" data-pcmsub="painel">Painel</div>
       </div>
-      ${state.pcmSubTab==="distribuidas" ? pcmDistribuidasHTML() : state.pcmSubTab==="painel" ? pcmPainelHTML() : pcmBacklogHTML()}
+      ${state.pcmSubTab==="distribuidas" ? pcmDistribuidasHTML() : state.pcmSubTab==="finalizadas" ? pcmFinalizadasHTML() : state.pcmSubTab==="painel" ? pcmPainelHTML() : pcmBacklogHTML()}
     `;
   }
   function pcmBacklogHTML(){
@@ -1198,29 +1673,35 @@
       }).join("")}
     `;
   }
+  // Monta o texto pesquisável de uma OS pra busca livre -- inclui a data agendada nos dois formatos
+  // (ISO "2026-09-18" e "18/09/2026") pra funcionar seja qual for o jeito que a pessoa digitar a data.
+  function pcmSearchHaystack(o){
+    const iso = o.scheduledDate||"";
+    const br = iso ? iso.split("-").reverse().join("/") : "";
+    return [o.osNumber,o.description,o.tag,o.assetName,iso,br].join(" ").toLowerCase();
+  }
   function pcmDistribuidasHTML(){
     const q = (state.pcmDistribuidasSearch||"").trim().toLowerCase();
     const today = todayISO();
     const setorOptions = state.setores.map(s=>s.name).sort((a,b)=>a.localeCompare(b,"pt-BR"));
     const rows = state.serviceOrders
-      .filter(o=>o.status==="distribuida" || o.status==="realizada")
-      .filter(o=>!state.pcmDistribuidasStatusFilter || o.status===state.pcmDistribuidasStatusFilter)
+      .filter(o=>o.status==="distribuida")
       .filter(o=>!state.pcmDistribuidasSetorFilter || o.setor===state.pcmDistribuidasSetorFilter)
-      .filter(o=>!q || [o.osNumber,o.description,o.tag,o.assetName].join(" ").toLowerCase().includes(q))
-      .sort((a,b)=> (a.scheduledDate||"9999").localeCompare(b.scheduledDate||"9999"));
+      .filter(o=>!state.pcmDistribuidasDateFilter || o.scheduledDate===state.pcmDistribuidasDateFilter)
+      .filter(o=>!q || pcmSearchHaystack(o).includes(q))
+      .sort((a,b)=> (a.scheduledDate||"9999").localeCompare(b.scheduledDate||"9999") || (a.osNumber||0)-(b.osNumber||0));
     [...pcmDistribuidasSelected].forEach(id => { if(!rows.some(r=>r.id===id)) pcmDistribuidasSelected.delete(id); });
     return `
       <div class="field" style="margin-bottom:8px"><input class="input" id="pcmDistSearchInput" placeholder="Buscar OS, TAG, descrição…" value="${esc(state.pcmDistribuidasSearch||"")}" /></div>
-      <div class="row-flex" style="gap:8px;margin-bottom:14px">
-        <select class="input" id="pcmDistStatusFilter">
-          <option value="">Distribuídas + realizadas</option>
-          <option value="distribuida" ${state.pcmDistribuidasStatusFilter==='distribuida'?'selected':''}>Só distribuídas</option>
-          <option value="realizada" ${state.pcmDistribuidasStatusFilter==='realizada'?'selected':''}>Só realizadas</option>
-        </select>
+      <div class="field" style="margin-bottom:8px">
         <select class="input" id="pcmDistSetorFilter">
           <option value="">Todos os setores</option>
           ${setorOptions.map(s=>`<option value="${esc(s)}" ${s===state.pcmDistribuidasSetorFilter?'selected':''}>${esc(s)}</option>`).join("")}
         </select>
+      </div>
+      <div class="row-flex" style="gap:8px;margin-bottom:14px;align-items:center">
+        <input type="date" class="input" id="pcmDistDateFilter" title="Filtrar por data agendada" value="${esc(state.pcmDistribuidasDateFilter||"")}" />
+        ${state.pcmDistribuidasDateFilter ? `<button class="btn ghost small" id="pcmDistDateFilterClear" style="width:auto">✕</button>` : ""}
       </div>
       ${pcmDistribuidasSelected.size ? `
       <div class="card" style="margin-bottom:10px;background:var(--surface2)">
@@ -1232,11 +1713,9 @@
         <div class="field" style="margin-bottom:6px"><label>Reprogramar pra</label><input type="date" class="input" id="pcmBulkReprogramDate" /></div>
         <button class="btn ghost small" id="pcmBulkReprogramBtn" style="width:100%">📅 Reprogramar selecionadas</button>
       </div>` : ""}
-      ${!rows.length ? `<p class="empty">Nenhuma OS distribuída ainda.</p>` : rows.map(o => {
-        const atrasada = o.status==="distribuida" && o.scheduledDate && o.scheduledDate<today;
-        const statusBadge = o.status==="realizada" ? `<span class="badge aprovado">✅ Realizada</span>`
-          : atrasada ? `<span class="badge rejeitado">⚠️ Em atraso</span>`
-          : `<span class="badge pendente">Distribuída</span>`;
+      ${!rows.length ? `<p class="empty">Nenhuma OS distribuída pendente.</p>` : rows.map(o => {
+        const atrasada = o.scheduledDate && o.scheduledDate<today;
+        const statusBadge = atrasada ? `<span class="badge rejeitado">⚠️ Em atraso</span>` : `<span class="badge pendente">Distribuída</span>`;
         return `
         <div class="card" style="margin-bottom:10px">
           <div class="row-flex" style="justify-content:space-between;align-items:flex-start;gap:8px">
@@ -1248,13 +1727,51 @@
           ${o.reprogrammedCount>0?`<div style="font-size:11px;color:var(--muted);margin-top:2px">reprogramada ${o.reprogrammedCount}x</div>`:""}
           <div class="field" style="margin-top:10px;margin-bottom:8px"><label>Data agendada</label><input type="date" class="input" data-pcmscheduledate="${o.id}" value="${esc(o.scheduledDate||"")}" /></div>
           <div class="row-flex" style="gap:8px">
-            ${o.status==="realizada"
-              ? `<button class="btn ghost small" data-pcmreabrir="${o.id}" style="width:auto;flex:1">↩ Reabrir</button>`
-              : `<button class="btn small" data-pcmfinalizar="${o.id}" style="width:auto;flex:1">✅ Finalizar</button>
-                 <button class="btn ghost small" data-pcmrevert="${o.id}" style="width:auto">↩ Backlog</button>`}
+            <button class="btn small" data-pcmfinalizar="${o.id}" style="width:auto;flex:1">✅ Finalizar</button>
+            <button class="btn ghost small" data-pcmrevert="${o.id}" style="width:auto">↩ Backlog</button>
           </div>
         </div>`;
       }).join("")}
+    `;
+  }
+  // OS finalizadas fica separada de Distribuídas pra essa não virar um arquivo morto de tudo que já foi
+  // feito -- Distribuídas mostra só o que ainda está pendente, Finalizadas é o histórico (mais recente
+  // primeiro).
+  function pcmFinalizadasHTML(){
+    const q = (state.pcmFinalizadasSearch||"").trim().toLowerCase();
+    const setorOptions = state.setores.map(s=>s.name).sort((a,b)=>a.localeCompare(b,"pt-BR"));
+    const rows = state.serviceOrders
+      .filter(o=>o.status==="realizada")
+      .filter(o=>!state.pcmFinalizadasSetorFilter || o.setor===state.pcmFinalizadasSetorFilter)
+      .filter(o=>!state.pcmFinalizadasDateFilter || o.scheduledDate===state.pcmFinalizadasDateFilter)
+      .filter(o=>!q || pcmSearchHaystack(o).includes(q))
+      .sort((a,b)=> (b.completedAt||"").localeCompare(a.completedAt||""));
+    return `
+      <div class="field" style="margin-bottom:8px"><input class="input" id="pcmFinalizadasSearchInput" placeholder="Buscar OS, TAG, descrição…" value="${esc(state.pcmFinalizadasSearch||"")}" /></div>
+      <div class="field" style="margin-bottom:8px">
+        <select class="input" id="pcmFinalizadasSetorFilter">
+          <option value="">Todos os setores</option>
+          ${setorOptions.map(s=>`<option value="${esc(s)}" ${s===state.pcmFinalizadasSetorFilter?'selected':''}>${esc(s)}</option>`).join("")}
+        </select>
+      </div>
+      <div class="row-flex" style="gap:8px;margin-bottom:14px;align-items:center">
+        <input type="date" class="input" id="pcmFinalizadasDateFilter" title="Filtrar por data agendada" value="${esc(state.pcmFinalizadasDateFilter||"")}" />
+        ${state.pcmFinalizadasDateFilter ? `<button class="btn ghost small" id="pcmFinalizadasDateFilterClear" style="width:auto">✕</button>` : ""}
+      </div>
+      ${!rows.length ? `<p class="empty">Nenhuma OS finalizada ainda.</p>` : rows.map(o => `
+        <div class="card" style="margin-bottom:10px">
+          <div class="row-flex" style="justify-content:space-between;align-items:flex-start;gap:8px">
+            <span style="font-size:14px;font-weight:700">OS ${o.osNumber} — ${esc(o.description)||"—"}</span>
+            <span class="badge aprovado">✅ Realizada</span>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(o.tag)||"—"}${o.assetName?` · ${esc(o.assetName)}`:""}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(o.setor)||"—"}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Concluída em: ${o.completedAt ? new Date(o.completedAt).toLocaleString("pt-BR") : "—"}</div>
+          ${o.reprogrammedCount>0?`<div style="font-size:11px;color:var(--muted);margin-top:2px">reprogramada ${o.reprogrammedCount}x</div>`:""}
+          <div class="row-flex" style="gap:8px;margin-top:10px">
+            <button class="btn ghost small" data-pcmreabrir="${o.id}" style="width:auto;flex:1">↩ Reabrir</button>
+          </div>
+        </div>`).join("")}
     `;
   }
   function pcmPainelCardHTML(o){
@@ -1266,41 +1783,102 @@
       </div>
     `;
   }
+  // Dia / Semana / Mês controla TUDO na tela -- KPIs, "Por setor" e a lista de baixo -- o acompanhamento
+  // real do gestor é por semana e por mês, então os números do topo precisam responder ao período
+  // escolhido (antes só a lista de baixo reagia). "Em atraso" fica de fora dessa regra de propósito: é
+  // sempre o atraso ATUAL (hoje), não faz sentido "atraso" de um período passado ou futuro.
   function pcmPainelHTML(){
     const today = todayISO();
-    const month = today.slice(0,7);
     const active = state.serviceOrders.filter(o=>o.status==="distribuida"||o.status==="realizada");
-    const pendentes = active.filter(o=>o.status==="distribuida");
-    const realizadasNoMes = active.filter(o=>o.status==="realizada" && o.completedAt && o.completedAt.slice(0,7)===month);
-    const scheduledThisMonth = active.filter(o=>o.scheduledDate && o.scheduledDate.slice(0,7)===month);
-    const doneOfScheduledThisMonth = scheduledThisMonth.filter(o=>o.status==="realizada");
-    const pctConcluido = scheduledThisMonth.length ? Math.round((doneOfScheduledThisMonth.length/scheduledThisMonth.length)*100) : null;
-    const emAtraso = pendentes.filter(o=>o.scheduledDate && o.scheduledDate<today);
-    const reprogramadasTotal = active.filter(o=>(o.reprogrammedCount||0)>0).length;
+    const pendentesGlobal = active.filter(o=>o.status==="distribuida");
+    const emAtraso = pendentesGlobal.filter(o=>o.scheduledDate && o.scheduledDate<today);
 
+    const viewMode = ["dia","semana","mes"].includes(state.pcmPainelViewMode) ? state.pcmPainelViewMode : "dia";
     const painelDate = state.pcmPainelDate || today;
-    const doDia = active.filter(o=>o.scheduledDate===painelDate);
-    const doDiaPendentes = doDia.filter(o=>o.status==="distribuida");
-    const doDiaRealizadas = doDia.filter(o=>o.status==="realizada");
-    const dateLabel = new Date(painelDate+"T00:00:00").toLocaleDateString("pt-BR",{weekday:"long", day:"2-digit", month:"long", year:"numeric"});
+    const painelWeek = state.pcmPainelWeek || isoWeekString(today);
+    const painelMonth = state.pcmPainelMonth || today.slice(0,7);
+
+    let periodStart, periodEnd, periodLabel;
+    if(viewMode==="semana"){
+      const weekInfo = parseWeekInput(painelWeek) || isoWeekOf(today);
+      periodStart = isoWeekMonday(weekInfo.year, weekInfo.week);
+      periodEnd = addDays(periodStart, 6);
+      periodLabel = `Semana ${weekInfo.week} de ${weekInfo.year} — ${brDate(periodStart)} a ${brDate(periodEnd)}`;
+    } else if(viewMode==="mes"){
+      const [y,m] = painelMonth.split("-").map(Number);
+      periodStart = `${painelMonth}-01`;
+      periodEnd = `${painelMonth}-${String(new Date(y,m,0).getDate()).padStart(2,"0")}`;
+      periodLabel = new Date(y, m-1, 1).toLocaleDateString("pt-BR", {month:"long", year:"numeric"});
+    } else {
+      periodStart = periodEnd = painelDate;
+      periodLabel = new Date(painelDate+"T00:00:00").toLocaleDateString("pt-BR",{weekday:"long", day:"2-digit", month:"long", year:"numeric"});
+    }
+    const periodoOS = active.filter(o=>o.scheduledDate && o.scheduledDate>=periodStart && o.scheduledDate<=periodEnd);
+    const periodoPendentes = periodoOS.filter(o=>o.status==="distribuida");
+    const periodoRealizadas = periodoOS.filter(o=>o.status==="realizada");
+    const pctConcluido = periodoOS.length ? Math.round((periodoRealizadas.length/periodoOS.length)*100) : null;
+    const reprogramadasNoPeriodo = periodoOS.filter(o=>(o.reprogrammedCount||0)>0).length;
+
+    // "Por setor" -- responde de cara "qual setor tem OS pendente", sem precisar contar item por item.
+    const bySetor = new Map();
+    periodoOS.forEach(o => {
+      const key = o.setor || "Sem setor";
+      if(!bySetor.has(key)) bySetor.set(key, { setor:key, pendentes:0, realizadas:0 });
+      const row = bySetor.get(key);
+      if(o.status==="distribuida") row.pendentes++; else row.realizadas++;
+    });
+    const setorRows = [...bySetor.values()].sort((a,b)=>a.setor.localeCompare(b.setor,"pt-BR"));
+
+    function groupBySetor(list){
+      const map = new Map();
+      list.forEach(o => { const key = o.setor||"Sem setor"; if(!map.has(key)) map.set(key, []); map.get(key).push(o); });
+      return [...map.entries()].sort((a,b)=> a[0]==="Sem setor" ? 1 : b[0]==="Sem setor" ? -1 : a[0].localeCompare(b[0],"pt-BR"));
+    }
+    const periodoPendentesPorSetor = groupBySetor(periodoPendentes);
+    const periodoRealizadasPorSetor = groupBySetor(periodoRealizadas);
+    const periodoWord = viewMode==="mes" ? "no mês" : viewMode==="semana" ? "na semana" : "no dia";
 
     return `
-      <div class="kpis" style="margin-bottom:16px">
-        <div class="card kpi"><div class="label">Pendentes</div><div class="value">${pendentes.length}</div></div>
-        <div class="card kpi"><div class="label">Realizadas no mês</div><div class="value" style="color:var(--emerald)">${realizadasNoMes.length}</div></div>
-        <div class="card kpi"><div class="label">% concluído no mês</div><div class="value">${pctConcluido==null?"—":pctConcluido+"%"}</div></div>
-        <div class="card kpi"><div class="label">Em atraso</div><div class="value" style="color:${emAtraso.length?'var(--rose)':'var(--emerald)'}">${emAtraso.length}</div></div>
-        <div class="card kpi" style="grid-column:1/-1"><div class="label">Reprogramadas</div><div class="value" style="color:var(--amber)">${reprogramadasTotal}</div></div>
+      <div class="tabs2" style="margin-bottom:10px">
+        <div class="t ${viewMode==='dia'?'active':''}" data-pcmpainelmode="dia">Dia</div>
+        <div class="t ${viewMode==='semana'?'active':''}" data-pcmpainelmode="semana">Semana</div>
+        <div class="t ${viewMode==='mes'?'active':''}" data-pcmpainelmode="mes">Mês</div>
       </div>
-      <div class="field" style="margin-bottom:4px"><label>Visão do dia</label><input type="date" class="input" id="pcmPainelDate" value="${painelDate}" /></div>
-      <p style="font-size:11.5px;color:var(--muted);margin:4px 0 12px;text-transform:capitalize">${esc(dateLabel)}</p>
-      ${!doDia.length ? `<p class="empty">Nenhuma OS agendada pra esse dia.</p>` : `
-      ${doDiaPendentes.length ? `
-      <h2 class="section">Pendentes (${doDiaPendentes.length})</h2>
-      <div class="card" style="padding:4px 16px;margin-bottom:16px">${doDiaPendentes.map(o=>pcmPainelCardHTML(o)).join("")}</div>` : ""}
-      ${doDiaRealizadas.length ? `
-      <h2 class="section">Realizadas (${doDiaRealizadas.length})</h2>
-      <div class="card" style="padding:4px 16px">${doDiaRealizadas.map(o=>pcmPainelCardHTML(o)).join("")}</div>` : ""}
+      <div class="field" style="margin-bottom:4px">${viewMode==="semana"
+        ? `<input type="week" class="input" id="pcmPainelWeek" value="${painelWeek}" />`
+        : viewMode==="mes"
+        ? `<input type="month" class="input" id="pcmPainelMonth" value="${painelMonth}" />`
+        : `<input type="date" class="input" id="pcmPainelDate" value="${painelDate}" />`}</div>
+      <p style="font-size:11.5px;color:var(--muted);margin:4px 0 14px;text-transform:capitalize">${esc(periodLabel)}</p>
+      <div class="kpis" style="margin-bottom:16px">
+        <div class="card kpi"><div class="label">Pendentes ${periodoWord}</div><div class="value">${periodoPendentes.length}</div></div>
+        <div class="card kpi"><div class="label">Realizadas ${periodoWord}</div><div class="value" style="color:var(--emerald)">${periodoRealizadas.length}</div></div>
+        <div class="card kpi"><div class="label">% concluído ${periodoWord}</div><div class="value">${pctConcluido==null?"—":pctConcluido+"%"}</div></div>
+        <div class="card kpi"><div class="label">Em atraso (hoje)</div><div class="value" style="color:${emAtraso.length?'var(--rose)':'var(--emerald)'}">${emAtraso.length}</div></div>
+        <div class="card kpi" style="grid-column:1/-1"><div class="label">Reprogramadas ${periodoWord}</div><div class="value" style="color:var(--amber)">${reprogramadasNoPeriodo}</div></div>
+      </div>
+      <h2 class="section">Por setor (${periodoWord})</h2>
+      <div class="card" style="padding:0;margin-bottom:16px">
+        <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Setor</th><th>Pendentes</th><th>Realizadas</th></tr></thead>
+          <tbody>${setorRows.map(r=>`<tr${r.pendentes>0?' style="font-weight:700"':''}><td>${esc(r.setor)}</td><td style="color:${r.pendentes>0?'var(--rose)':'var(--brand-light)'}">${r.pendentes}</td><td style="color:var(--emerald)">${r.realizadas}</td></tr>`).join("") || `<tr><td colspan="3" class="empty">Nada agendado nesse período.</td></tr>`}</tbody>
+        </table>
+        </div>
+      </div>
+      ${!periodoOS.length ? `<p class="empty">Nenhuma OS agendada pra esse período.</p>` : `
+      ${periodoPendentesPorSetor.length ? `
+      <h2 class="section">Pendentes (${periodoPendentes.length})</h2>
+      ${periodoPendentesPorSetor.map(([setor,list])=>`
+        <div style="font-size:11.5px;font-weight:700;color:var(--rose);margin:8px 2px 4px">${esc(setor)} (${list.length})</div>
+        <div class="card" style="padding:4px 16px;margin-bottom:10px">${list.map(o=>pcmPainelCardHTML(o)).join("")}</div>`).join("")}
+      ` : ""}
+      ${periodoRealizadasPorSetor.length ? `
+      <h2 class="section">Realizadas (${periodoRealizadas.length})</h2>
+      ${periodoRealizadasPorSetor.map(([setor,list])=>`
+        <div style="font-size:11.5px;font-weight:700;color:var(--emerald);margin:8px 2px 4px">${esc(setor)} (${list.length})</div>
+        <div class="card" style="padding:4px 16px;margin-bottom:10px">${list.map(o=>pcmPainelCardHTML(o)).join("")}</div>`).join("")}
+      ` : ""}
       `}
     `;
   }
@@ -1988,6 +2566,13 @@
     const roster = computeDayRoster(state.frequencyDate);
     const presentIds = new Set(roster.present.map(r=>r.employee.id));
     [...frequencySelected].forEach(id => { if(!presentIds.has(id)) frequencySelected.delete(id); });
+    // Quem não tem turno previsto pra essa data (folga por escala, sem turno cadastrado, etc.) não
+    // aparece em nenhuma das duas listas abaixo -- computeDayRoster só devolve quem TEM algum turno
+    // válido nesse dia. Sem isso, não existia jeito de abrir o lançamento pra alguém fora da escala
+    // (ex: cobrindo outro colega, corrigindo um esquecimento) -- o funcionário simplesmente não
+    // aparecia em lugar nenhum da tela pra tocar.
+    const rosterIds = new Set([...roster.present.map(r=>r.employee.id), ...roster.off.map(r=>r.employee.id)]);
+    const notScheduled = state.employees.filter(e=>e.status==="Ativo" && !rosterIds.has(e.id)).sort((a,b)=>a.name.localeCompare(b.name,"pt-BR"));
     const allSelected = roster.present.length>0 && roster.present.every(r=>frequencySelected.has(r.employee.id));
     const rosterRowHTML = (r, isPresent) => `
       <div class="req-row" data-freqrow="${r.employee.id}">
@@ -2017,8 +2602,18 @@
         ${roster.present.length ? roster.present.map(r=>rosterRowHTML(r,true)).join("") : `<p class="empty">Ninguém escalado.</p>`}
       </div>
       <h2 class="section">Folga / férias (${roster.off.length})</h2>
-      <div class="card" style="padding:4px 16px">
+      <div class="card" style="padding:4px 16px;margin-bottom:20px">
         ${roster.off.length ? roster.off.map(r=>rosterRowHTML(r,false)).join("") : `<p class="empty">Ninguém de folga/férias.</p>`}
+      </div>
+      <h2 class="section">Lançar pra quem não está escalado</h2>
+      <div class="card">
+        ${!notScheduled.length ? `<p class="empty" style="margin:0">Todo mundo ativo já aparece nas listas acima pra esse dia.</p>` : `
+        <div class="field" style="margin-bottom:0"><label>Funcionário</label><select class="input" id="freq_notScheduledSelect">
+          <option value="">Selecione…</option>
+          ${notScheduled.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join("")}
+        </select></div>
+        <button class="btn small" id="freq_notScheduledBtn" type="button" style="margin-top:10px">Lançar apontamento</button>
+        `}
       </div>
     `;
   }
@@ -2288,18 +2883,24 @@
     const pendingCount = state.timeOffRequests.filter(r=>r.status==="pendente").length;
     const lockedCount = state.employees.filter(e=>e.lockedAt).length;
     // Subtelas de "Mais" não são itens próprios do bottom nav — mantém "Mais" destacado nelas.
-    const MAIS_SUBTABS = ["frequencia","turnos","feriados","calendario","mapaferias","empresas","indicadores","dss","checklist","pcm"];
+    const MAIS_SUBTABS = ["frequencia","turnos","feriados","calendario","mapaferias","empresas","indicadores","dss","checklist","pcm","banners"];
     const navTab = MAIS_SUBTABS.includes(state.tab) ? "mais" : state.tab;
     const mainHTML = {
       inicio: inicioHTML, solicitacoes: solicitacoesHTML, funcionarios: funcionariosHTML,
       frequencia: frequenciaHTML, turnos: turnosHTML, feriados: feriadosHTML,
       calendario: calendarioHTML, mapaferias: mapaFeriasHTML, empresas: empresasHTML,
       indicadores: indicadoresHTML, dss: dssAdminHTML, checklist: checklistAdminHTML, pcm: pcmAdminHTML,
+      banners: bannersHTML,
     }[state.tab] || maisHTML;
     return `
       <header class="top">
-        <div class="brand">Fertgrow Gestão</div>
-        <div class="who">${esc(state.session.user.email||"")}</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+          <div>
+            <div class="brand">Fertgrow Gestão</div>
+            <div class="who">${esc(state.session.user.email||"")}</div>
+          </div>
+          ${installButtonHTML()}
+        </div>
       </header>
       <main>${mainHTML()}</main>
       <nav class="bottom">
@@ -2313,9 +2914,10 @@
 
   // ---------------- wiring ----------------
   function wireView(){
-    if(state.view==="auth"){ $("#auth_submit").addEventListener("click", onAuthSubmit); return; }
+    if(state.view==="auth"){ $("#auth_submit").addEventListener("click", onAuthSubmit); wireInstallButtons(); return; }
     if(state.view==="unauthorized"){ $("#unauth_logout").addEventListener("click", () => { state.view="auth"; render(); }); return; }
     if(state.view!=="app") return;
+    wireInstallButtons();
     document.querySelectorAll("[data-tab]").forEach(el => el.addEventListener("click", async () => {
       if(el.dataset.tab==="logout"){ await supabase.auth.signOut(); state = {...state, view:"auth", session:null, profile:null}; render(); return; }
       state.tab = el.dataset.tab; render();
@@ -2356,6 +2958,13 @@
         const employee = state.employees.find(e=>e.id===el.dataset.freqrow);
         if(employee) openAttendanceModal(employee, state.frequencyDate);
       }));
+      const notSchedBtn = $("#freq_notScheduledBtn");
+      if(notSchedBtn) notSchedBtn.addEventListener("click", () => {
+        const id = $("#freq_notScheduledSelect")?.value;
+        if(!id){ alert("Selecione um funcionário."); return; }
+        const employee = state.employees.find(e=>e.id===id);
+        if(employee) openAttendanceModal(employee, state.frequencyDate);
+      });
     }
     if(state.tab==="turnos"){
       const newBtn = $("#newShiftBtn");
@@ -2499,10 +3108,12 @@
       if(state.pcmSubTab==="distribuidas"){
         const searchInput = $("#pcmDistSearchInput");
         if(searchInput) searchInput.addEventListener("input", e => { state.pcmDistribuidasSearch = e.target.value; render(); });
-        const statusFilter = $("#pcmDistStatusFilter");
-        if(statusFilter) statusFilter.addEventListener("change", e => { state.pcmDistribuidasStatusFilter = e.target.value; render(); });
         const setorFilter = $("#pcmDistSetorFilter");
         if(setorFilter) setorFilter.addEventListener("change", e => { state.pcmDistribuidasSetorFilter = e.target.value; render(); });
+        const distDateFilter = $("#pcmDistDateFilter");
+        if(distDateFilter) distDateFilter.addEventListener("change", e => { state.pcmDistribuidasDateFilter = e.target.value; render(); });
+        const distDateClear = $("#pcmDistDateFilterClear");
+        if(distDateClear) distDateClear.addEventListener("click", () => { state.pcmDistribuidasDateFilter = ""; render(); });
         $$("[data-pcmscheduledate]").forEach(el => el.addEventListener("change", async () => {
           const o = state.serviceOrders.find(x=>x.id===el.dataset.pcmscheduledate); if(!o) return;
           if(o.scheduledDate && el.value && o.scheduledDate!==el.value) o.reprogrammedCount = (o.reprogrammedCount||0)+1;
@@ -2513,12 +3124,6 @@
         $$("[data-pcmfinalizar]").forEach(el => el.addEventListener("click", async () => {
           const o = state.serviceOrders.find(x=>x.id===el.dataset.pcmfinalizar); if(!o) return;
           o.status = "realizada"; o.completedAt = new Date().toISOString();
-          render();
-          await cloudUpsertServiceOrder(o);
-        }));
-        $$("[data-pcmreabrir]").forEach(el => el.addEventListener("click", async () => {
-          const o = state.serviceOrders.find(x=>x.id===el.dataset.pcmreabrir); if(!o) return;
-          o.status = "distribuida"; o.completedAt = "";
           render();
           await cloudUpsertServiceOrder(o);
         }));
@@ -2564,9 +3169,29 @@
           render();
           await Promise.all(targets.map(cloudUpsertServiceOrder));
         });
+      } else if(state.pcmSubTab==="finalizadas"){
+        const searchInput = $("#pcmFinalizadasSearchInput");
+        if(searchInput) searchInput.addEventListener("input", e => { state.pcmFinalizadasSearch = e.target.value; render(); });
+        const setorFilter = $("#pcmFinalizadasSetorFilter");
+        if(setorFilter) setorFilter.addEventListener("change", e => { state.pcmFinalizadasSetorFilter = e.target.value; render(); });
+        const finDateFilter = $("#pcmFinalizadasDateFilter");
+        if(finDateFilter) finDateFilter.addEventListener("change", e => { state.pcmFinalizadasDateFilter = e.target.value; render(); });
+        const finDateClear = $("#pcmFinalizadasDateFilterClear");
+        if(finDateClear) finDateClear.addEventListener("click", () => { state.pcmFinalizadasDateFilter = ""; render(); });
+        $$("[data-pcmreabrir]").forEach(el => el.addEventListener("click", async () => {
+          const o = state.serviceOrders.find(x=>x.id===el.dataset.pcmreabrir); if(!o) return;
+          o.status = "distribuida"; o.completedAt = "";
+          render();
+          await cloudUpsertServiceOrder(o);
+        }));
       } else if(state.pcmSubTab==="painel"){
         const dateInput = $("#pcmPainelDate");
         if(dateInput) dateInput.addEventListener("change", e => { state.pcmPainelDate = e.target.value; render(); });
+        const weekInput = $("#pcmPainelWeek");
+        if(weekInput) weekInput.addEventListener("change", e => { state.pcmPainelWeek = e.target.value; render(); });
+        const monthInput = $("#pcmPainelMonth");
+        if(monthInput) monthInput.addEventListener("change", e => { state.pcmPainelMonth = e.target.value; render(); });
+        $$("[data-pcmpainelmode]").forEach(el => el.addEventListener("click", () => { state.pcmPainelViewMode = el.dataset.pcmpainelmode; render(); }));
       } else {
         const searchInput = $("#pcmBacklogSearchInput");
         if(searchInput) searchInput.addEventListener("input", e => { state.pcmBacklogSearch = e.target.value; render(); });
@@ -2617,7 +3242,11 @@
         });
         const bulkDistribuirBtn = $("#pcmBulkDistribuirBtn");
         if(bulkDistribuirBtn) bulkDistribuirBtn.addEventListener("click", async () => {
-          const targets = [...pcmBacklogSelected].map(id=>state.serviceOrders.find(o=>o.id===id)).filter(o=>o && o.setor);
+          const all = [...pcmBacklogSelected].map(id=>state.serviceOrders.find(o=>o.id===id)).filter(Boolean);
+          const targets = all.filter(o=>o.setor);
+          const missing = all.filter(o=>!o.setor);
+          if(missing.length) alert(`${missing.length} OS selecionada(s) ainda sem setor definido -- essas continuam no Backlog: ${missing.map(o=>o.osNumber).join(", ")}.`);
+          if(!targets.length) return;
           targets.forEach(o => { o.status = "distribuida"; o.distributedAt = new Date().toISOString(); if(!o.scheduledDate) o.scheduledDate = pcmFirstScheduledDate(o.weekStart, o.schedule); });
           pcmBacklogSelected.clear();
           render();
@@ -2633,6 +3262,9 @@
           await Promise.all(ids.map(cloudDeleteServiceOrder));
         });
       }
+    }
+    if(state.tab==="banners"){
+      wireBanners();
     }
   }
 
