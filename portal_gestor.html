@@ -342,6 +342,7 @@
       pcm_emitted_at:o.pcmEmittedAt||null, setor:o.setor||"", responsible_employee_id:o.responsibleEmployeeId||null,
       status:o.status||"backlog", source_file_name:o.sourceFileName||"", imported_at:o.importedAt, distributed_at:o.distributedAt||null,
       scheduled_date:o.scheduledDate||null, completed_at:o.completedAt||null, reprogrammed_count:o.reprogrammedCount||0,
+      melvin_finalized_pending:o.melvinFinalizedPending||false,
     };
   }
   function serviceOrderFromRow(r){
@@ -352,10 +353,33 @@
       pcmEmittedAt:r.pcm_emitted_at||"", setor:r.setor||"", responsibleEmployeeId:r.responsible_employee_id||"",
       status:r.status||"backlog", sourceFileName:r.source_file_name||"", importedAt:r.imported_at, distributedAt:r.distributed_at||"",
       scheduledDate:r.scheduled_date||"", completedAt:r.completed_at||"", reprogrammedCount:r.reprogrammed_count||0,
+      melvinFinalizedPending:!!r.melvin_finalized_pending,
     };
   }
   const cloudUpsertServiceOrder = (o) => trackedCloudCall(supabase.from("service_orders").upsert(serviceOrderToRow(o)));
   const cloudDeleteServiceOrder = (id) => trackedCloudCall(supabase.from("service_orders").delete().eq("id", id));
+  // Chama a Edge Function melvin-sync na hora (o mesmo robô que já roda sozinho de 15 em 15 minutos),
+  // pra quem não quer esperar a próxima rodada automática antes de olhar o backlog.
+  async function runMelvinSyncNow(){
+    if(!configured) return;
+    state.pcmMelvinSyncStatus = "Buscando no Melvin…";
+    render();
+    try{
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/melvin-sync`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json", "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "apikey": SUPABASE_ANON_KEY },
+      });
+      const result = await res.json();
+      if(!res.ok || result.error) throw new Error(result.error || `HTTP ${res.status}`);
+      const { data: soRows, error: soErr } = await supabase.from("service_orders").select("*");
+      if(soErr) throw soErr;
+      state.serviceOrders = (soRows||[]).map(serviceOrderFromRow);
+      state.pcmMelvinSyncStatus = `Atualizado: ${result.inserted} OS nova(s), ${result.autoFinalized} finalizada(s) automaticamente, ${result.flaggedPending} com aviso de conclusão pendente de distribuição.`;
+    }catch(err){
+      state.pcmMelvinSyncStatus = "Não consegui atualizar do Melvin agora: "+err.message;
+    }
+    render();
+  }
   const PCM_DAY_OFFSET = { seg:0, ter:1, qua:2, qui:3, sex:4, sab:5, dom:6 };
   function pcmScheduleDates(weekStart, schedule){
     if(!weekStart || !Array.isArray(schedule) || !schedule.length) return [];
@@ -377,6 +401,19 @@
   function pcmFirstScheduledDate(weekStart, schedule){
     const dates = pcmScheduleDates(weekStart, schedule);
     return dates.length ? dates[0] : "";
+  }
+  // Distribuir uma OS que o Melvin já avisou (via webhook) que foi concluída lá (melvinFinalizedPending)
+  // pula direto pra "realizada" em vez de "distribuida" -- o setor nunca vem do Melvin, só entra aqui
+  // no Distribuir, mas se ela já está pronta de verdade não faz sentido esperar um segundo clique em
+  // "Finalizar" só porque passou por aqui primeiro.
+  function pcmApplyDistribuir(o){
+    o.distributedAt = new Date().toISOString();
+    if(!o.scheduledDate) o.scheduledDate = pcmFirstScheduledDate(o.weekStart, o.schedule);
+    if(o.melvinFinalizedPending){
+      o.status = "realizada"; o.completedAt = new Date().toISOString(); o.melvinFinalizedPending = false;
+    } else {
+      o.status = "distribuida";
+    }
   }
   function employeeToRow(e){ return { id:e.id, name:e.name, email:e.email?e.email.trim().toLowerCase():null, cargo:e.cargo||"", company_id:e.companyId||null, shift_id:e.shiftId||null, admissao:e.admissao||null, status:e.status||"Ativo", rates:e.rates||{}, ferias_saldo_dias: e.feriasSaldoDias ?? 30, birth_date: e.birthDate||null }; }
   function employeeFromRow(r, attendance, shiftHistory, profile){ return { id:r.id, name:r.name, email:r.email||"", cargo:r.cargo||"", companyId:r.company_id||"", shiftId:r.shift_id||"", admissao:r.admissao||"", status:r.status||"Ativo", rates:r.rates||{}, feriasSaldoDias: r.ferias_saldo_dias ?? 30, birthDate: r.birth_date||"", attendance: attendance||[], shiftHistory: shiftHistory||[], profileId: profile?.id||null, lockedAt: profile?.locked_at||null }; }
@@ -605,6 +642,7 @@
     dashboardDate: todayISO(),
     employeeSearch: "",
     frequencyDate: todayISO(),
+    frequencyShiftFilter: "",
     calendarEmployeeId: "",
     calendarMonth: todayISO().slice(0,7),
     mapaFeriasYear: new Date().getFullYear(),
@@ -617,7 +655,7 @@
     checklistHistoryEmployeeId: "", checklistHistoryCategoryId: "",
     serviceOrders: [],
     pcmSubTab: "backlog",
-    pcmBacklogSearch: "", pcmBacklogSetorFilter: "",
+    pcmBacklogSearch: "", pcmBacklogSetorFilter: "", pcmMelvinSyncStatus: "",
     pcmDistribuidasSearch: "", pcmDistribuidasSetorFilter: "", pcmDistribuidasDateFilter: "",
     pcmFinalizadasSearch: "", pcmFinalizadasSetorFilter: "", pcmFinalizadasDateFilter: "",
     pcmPainelDate: "", pcmPainelViewMode: "dia", pcmPainelWeek: "", pcmPainelMonth: "",
@@ -1634,7 +1672,7 @@
       img.src = url;
     });
   }
-  async function prCompressImage(file, maxDim=1600, quality=0.82){
+  async function prCompressImageInner(file, maxDim, quality){
     const bitmap = await prLoadBitmap(file);
     let width = bitmap.width, height = bitmap.height;
     if(width > maxDim || height > maxDim){
@@ -1648,6 +1686,35 @@
     ctx.drawImage(bitmap, 0, 0, width, height);
     if(bitmap.close) bitmap.close();
     return new Promise(resolve => canvas.toBlob(blob => resolve({ blob, width, height }), "image/jpeg", quality));
+  }
+  function prReadImageDims(file){
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => { URL.revokeObjectURL(url); resolve({ width: img.naturalWidth||1600, height: img.naturalHeight||1200 }); };
+      img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+      img.src = url;
+    });
+  }
+  // Em alguns celulares (foto de câmera muito grande, navegador mais antigo), createImageBitmap/canvas
+  // trava sem nunca dar erro nem terminar -- sem um limite de tempo, "Adicionar fotos" ficava preso em
+  // "Processando..." pra sempre (bug real reportado no app do colaborador). Se travar, usa a foto
+  // ORIGINAL sem reduzir (mais pesada no PDF, mas pelo menos entra) em vez de travar o app.
+  async function prCompressImage(file, maxDim=1600, quality=0.82){
+    try{
+      return await Promise.race([
+        prCompressImageInner(file, maxDim, quality),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 20000)),
+      ]);
+    }catch(err){
+      console.error("Compressão da foto travou/falhou, usando original sem reduzir:", err);
+      try{
+        const dims = await prReadImageDims(file);
+        return { blob: file, width: dims.width, height: dims.height };
+      }catch(err2){
+        return { blob: file, width: 1600, height: 1200 };
+      }
+    }
   }
   function prBlobToDataURL(blob){
     return new Promise((resolve, reject) => {
@@ -2018,6 +2085,8 @@
           ${setorOptions.map(s=>`<option value="${esc(s)}" ${s===state.pcmBacklogSetorFilter?'selected':''}>${esc(s)}</option>`).join("")}
         </select>
       </div>
+      <button class="btn ghost small" id="pcmMelvinSyncBtn" style="margin-bottom:10px">🔄 Atualizar do Melvin</button>
+      ${state.pcmMelvinSyncStatus ? `<p style="font-size:11.5px;color:var(--muted);margin:-4px 0 10px">${esc(state.pcmMelvinSyncStatus)}</p>` : ""}
       ${rows.length ? `<label class="row-flex" style="gap:6px;align-items:center;margin-bottom:10px;font-size:12.5px;color:var(--muted)"><input type="checkbox" id="pcmBacklogSelAll" ${rows.length && rows.every(r=>pcmBacklogSelected.has(r.id))?'checked':''} /> Selecionar todas (${rows.length})</label>` : ""}
       ${pcmBacklogSelected.size ? `
       <div class="card" style="margin-bottom:10px;background:var(--surface2)">
@@ -2035,16 +2104,17 @@
       ${!rows.length ? `<p class="empty">Backlog vazio. Importe a Programação Semanal pelo painel desktop.</p>` : rows.map(o => {
         const ready = !!o.setor;
         return `
-        <div class="card" style="margin-bottom:10px">
+        <div class="card" style="margin-bottom:10px${o.melvinFinalizedPending?';background:rgba(52,211,153,.08)':''}">
           <label class="row-flex" style="gap:6px;align-items:center;font-size:14px;font-weight:700"><input type="checkbox" data-pcmbacklogsel="${o.id}" ${pcmBacklogSelected.has(o.id)?'checked':''} /><span>OS ${o.osNumber} — ${esc(o.description)||"—"}</span></label>
+          ${o.melvinFinalizedPending?`<div style="margin-top:4px"><span class="badge" style="background:rgba(52,211,153,.18);color:var(--emerald)">✅ Já concluída no Melvin</span></div>`:""}
           <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(o.tag)||"—"}${o.assetName?` · ${esc(o.assetName)}`:""}</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">Prevista: ${esc(pcmScheduleSummary(o.weekStart, o.schedule))}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Prevista: ${esc(o.scheduledDate ? brDate(o.scheduledDate) : pcmScheduleSummary(o.weekStart, o.schedule))}</div>
           <div class="field" style="margin-top:10px;margin-bottom:8px"><label>Setor</label><select class="input" data-pcmsetor="${o.id}">
             <option value="">Selecione…</option>
             ${setorOptions.map(s=>`<option value="${esc(s)}" ${o.setor===s?'selected':''}>${esc(s)}</option>`).join("")}
           </select></div>
           <div class="row-flex" style="gap:8px">
-            <button class="btn small" data-pcmdistribuir="${o.id}" style="width:auto;flex:1" ${ready?'':'disabled'}>Distribuir</button>
+            <button class="btn small" data-pcmdistribuir="${o.id}" style="width:auto;flex:1" ${ready?'':'disabled'}>${o.melvinFinalizedPending?'Distribuir e finalizar':'Distribuir'}</button>
             <button class="btn ghost small" data-pcmdescartar="${o.id}" style="width:auto;color:var(--rose)">🗑</button>
           </div>
         </div>`;
@@ -2950,7 +3020,10 @@
   let frequencySelected = new Set(); // ids de funcionários marcados na Frequência pra apontamento em lote
   function frequenciaHTML(){
     const roster = computeDayRoster(state.frequencyDate);
-    const presentIds = new Set(roster.present.map(r=>r.employee.id));
+    const shiftFilter = state.frequencyShiftFilter || "";
+    if(shiftFilter && !state.shifts.some(s=>s.id===shiftFilter)) state.frequencyShiftFilter = "";
+    const present = roster.present.filter(r => !shiftFilter || r.shift?.id===shiftFilter);
+    const presentIds = new Set(present.map(r=>r.employee.id));
     [...frequencySelected].forEach(id => { if(!presentIds.has(id)) frequencySelected.delete(id); });
     // Quem não tem turno previsto pra essa data (folga por escala, sem turno cadastrado, etc.) não
     // aparece em nenhuma das duas listas abaixo -- computeDayRoster só devolve quem TEM algum turno
@@ -2959,7 +3032,17 @@
     // aparecia em lugar nenhum da tela pra tocar.
     const rosterIds = new Set([...roster.present.map(r=>r.employee.id), ...roster.off.map(r=>r.employee.id)]);
     const notScheduled = state.employees.filter(e=>e.status==="Ativo" && !rosterIds.has(e.id)).sort((a,b)=>a.name.localeCompare(b.name,"pt-BR"));
-    const allSelected = roster.present.length>0 && roster.present.every(r=>frequencySelected.has(r.employee.id));
+    const allSelected = present.length>0 && present.every(r=>frequencySelected.has(r.employee.id));
+    // Agrupa quem deveria trabalhar hoje por turno -- mesma organização do modo "Lançar por turno" do
+    // painel desktop. O app não tem a visão mensal em tabela de lá (não cabe bem no celular) -- aqui o
+    // foco é só apontar o dia, então esse agrupamento fica sempre ativo, sem alternância de modo.
+    const groups = new Map();
+    present.forEach(r => {
+      const key = r.shift?.id || "sem-turno";
+      if(!groups.has(key)) groups.set(key, { shift: r.shift, rows: [] });
+      groups.get(key).rows.push(r);
+    });
+    const groupList = [...groups.values()].sort((a,b) => (a.shift?.name||"").localeCompare(b.shift?.name||"", "pt-BR"));
     const rosterRowHTML = (r, isPresent) => `
       <div class="req-row" data-freqrow="${r.employee.id}">
         <div style="display:flex;align-items:flex-start;gap:10px">
@@ -2977,16 +3060,28 @@
         <span class="link" data-tab="mais">← Mais</span>
       </div>
       <div class="card" style="margin-bottom:16px">
-        <div class="field" style="margin-bottom:0"><label>Data</label><input type="date" class="input" id="freq_date" value="${state.frequencyDate}" /></div>
+        <div class="field" style="margin-bottom:10px"><label>Data</label><input type="date" class="input" id="freq_date" value="${state.frequencyDate}" /></div>
+        <div class="field" style="margin-bottom:0"><label>Turno</label>
+          <select class="input" id="freq_shiftFilter">
+            <option value="">Todos os turnos</option>
+            ${[...state.shifts].sort((a,b)=>a.name.localeCompare(b.name,"pt-BR")).map(s=>`<option value="${s.id}" ${s.id===shiftFilter?'selected':''}>${esc(s.name)}</option>`).join("")}
+          </select>
+        </div>
       </div>
       <div class="row-flex" style="justify-content:space-between;align-items:center;margin-bottom:8px;gap:10px;flex-wrap:wrap">
-        <h2 class="section" style="margin:0">Deveriam trabalhar (${roster.present.length})</h2>
-        ${roster.present.length ? `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><input type="checkbox" id="freq_selectAll" ${allSelected?'checked':''} style="width:16px;height:16px" /> Selecionar todos</label>` : ""}
+        <h2 class="section" style="margin:0">Deveriam trabalhar (${present.length})</h2>
+        ${present.length ? `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><input type="checkbox" id="freq_selectAll" ${allSelected?'checked':''} style="width:16px;height:16px" /> Selecionar todos</label>` : ""}
       </div>
-      ${frequencySelected.size ? `<button class="btn small" id="bulkAttendanceBtn" type="button" style="margin-bottom:12px">📋 Apontar em lote (${frequencySelected.size})</button>` : ""}
-      <div class="card" style="padding:4px 16px;margin-bottom:20px">
-        ${roster.present.length ? roster.present.map(r=>rosterRowHTML(r,true)).join("") : `<p class="empty">Ninguém escalado.</p>`}
+      <div class="row-flex" style="gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        ${frequencySelected.size ? `<button class="btn small" id="bulkAttendanceBtn" type="button" style="width:auto">📋 Apontar em lote (${frequencySelected.size})</button>` : ""}
+        ${present.length ? `<button class="btn small ghost" id="freq_markAllPresent" type="button" style="width:auto">✅ Marcar todos como presente</button>` : ""}
       </div>
+      ${!present.length ? `<div class="card" style="margin-bottom:20px"><p class="empty" style="margin:0">Ninguém escalado${shiftFilter?" nesse turno":""}.</p></div>` : groupList.map(g => `
+        <div style="font-weight:700;font-size:13px;margin:0 0 6px;color:var(--brand-light)">${g.shift?esc(g.shift.name):"Sem turno padrão"} <span style="color:var(--muted);font-weight:400">(${g.rows.length})</span></div>
+        <div class="card" style="padding:4px 16px;margin-bottom:16px">
+          ${g.rows.map(r=>rosterRowHTML(r,true)).join("")}
+        </div>
+      `).join("")}
       <h2 class="section">Folga / férias (${roster.off.length})</h2>
       <div class="card" style="padding:4px 16px;margin-bottom:20px">
         ${roster.off.length ? roster.off.map(r=>rosterRowHTML(r,false)).join("") : `<p class="empty">Ninguém de folga/férias.</p>`}
@@ -3329,6 +3424,8 @@
     if(state.tab==="frequencia"){
       const dateInput = $("#freq_date");
       if(dateInput) dateInput.addEventListener("change", () => { state.frequencyDate = dateInput.value || todayISO(); frequencySelected.clear(); render(); });
+      const shiftFilterSel = $("#freq_shiftFilter");
+      if(shiftFilterSel) shiftFilterSel.addEventListener("change", () => { state.frequencyShiftFilter = shiftFilterSel.value; frequencySelected.clear(); render(); });
       document.querySelectorAll("[data-freqcheck]").forEach(el => el.addEventListener("click", (ev) => {
         ev.stopPropagation();
         if(el.checked) frequencySelected.add(el.dataset.freqcheck); else frequencySelected.delete(el.dataset.freqcheck);
@@ -3337,13 +3434,43 @@
       const selectAll = $("#freq_selectAll");
       if(selectAll) selectAll.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        const roster = computeDayRoster(state.frequencyDate);
-        if(selectAll.checked) roster.present.forEach(r=>frequencySelected.add(r.employee.id));
-        else roster.present.forEach(r=>frequencySelected.delete(r.employee.id));
+        const shiftId = state.frequencyShiftFilter || "";
+        const present = computeDayRoster(state.frequencyDate).present.filter(r => !shiftId || r.shift?.id===shiftId);
+        if(selectAll.checked) present.forEach(r=>frequencySelected.add(r.employee.id));
+        else present.forEach(r=>frequencySelected.delete(r.employee.id));
         render();
       });
       const bulkBtn = $("#bulkAttendanceBtn");
       if(bulkBtn) bulkBtn.addEventListener("click", () => openBulkAttendanceModal(state.employees.filter(e=>frequencySelected.has(e.id))));
+      // "Marcar todos como presente": lança direto (sem modal), sobrescrevendo o apontamento existente
+      // do dia pra quem está sendo mostrado (respeita o filtro de turno) -- mesma lógica do modo
+      // "Lançar por turno" do painel desktop (freqMarkAllPresent).
+      const markAllBtn = $("#freq_markAllPresent");
+      if(markAllBtn) markAllBtn.addEventListener("click", async () => {
+        const dateISO = state.frequencyDate;
+        const shiftId = state.frequencyShiftFilter || "";
+        const present = computeDayRoster(dateISO).present.filter(r => !shiftId || r.shift?.id===shiftId);
+        if(!present.length) return;
+        const label = shiftId ? `do turno "${esc(state.shifts.find(s=>s.id===shiftId)?.name||"")}"` : "de todos os turnos";
+        if(!confirm(`Marcar ${present.length} funcionário(s) ${label} como Presente em ${brDate(dateISO)}? Isso sobrescreve qualquer apontamento que já exista pra esses funcionários nessa data.`)) return;
+        markAllBtn.disabled = true; markAllBtn.textContent = "Salvando…";
+        const turno = TURNOS[0];
+        const rows = [];
+        const entriesByEmployee = [];
+        present.forEach(r => {
+          const employee = r.employee;
+          const hours = r.shift?.hoursPerDay ?? 8;
+          const entry = { id: uid(), date: dateISO, turno, hours, status:"presente", expectedHours: hours, justification:"", atestado:false };
+          rows.push(attendanceToRow(employee.id, entry));
+          entriesByEmployee.push([employee, entry]);
+        });
+        const { error } = await trackedCloudCall(supabase.from("attendance").upsert(rows, { onConflict:"employee_id,date" }));
+        markAllBtn.disabled = false; markAllBtn.textContent = "✅ Marcar todos como presente";
+        if(error){ alert("Não consegui salvar: "+error.message); return; }
+        entriesByEmployee.forEach(([employee, entry]) => { employee.attendance = [...(employee.attendance||[]).filter(a=>a.date!==dateISO), entry]; });
+        frequencySelected.clear();
+        render();
+      });
       document.querySelectorAll("[data-freqrow]").forEach(el => el.addEventListener("click", () => {
         const employee = state.employees.find(e=>e.id===el.dataset.freqrow);
         if(employee) openAttendanceModal(employee, state.frequencyDate);
@@ -3595,8 +3722,7 @@
         }));
         $$("[data-pcmdistribuir]").forEach(el => el.addEventListener("click", async () => {
           const o = state.serviceOrders.find(x=>x.id===el.dataset.pcmdistribuir); if(!o || !o.setor) return;
-          o.status = "distribuida"; o.distributedAt = new Date().toISOString();
-          if(!o.scheduledDate) o.scheduledDate = pcmFirstScheduledDate(o.weekStart, o.schedule);
+          pcmApplyDistribuir(o);
           render();
           await cloudUpsertServiceOrder(o);
         }));
@@ -3637,7 +3763,7 @@
           const missing = all.filter(o=>!o.setor);
           if(missing.length) alert(`${missing.length} OS selecionada(s) ainda sem setor definido -- essas continuam no Backlog: ${missing.map(o=>o.osNumber).join(", ")}.`);
           if(!targets.length) return;
-          targets.forEach(o => { o.status = "distribuida"; o.distributedAt = new Date().toISOString(); if(!o.scheduledDate) o.scheduledDate = pcmFirstScheduledDate(o.weekStart, o.schedule); });
+          targets.forEach(pcmApplyDistribuir);
           pcmBacklogSelected.clear();
           render();
           await Promise.all(targets.map(cloudUpsertServiceOrder));
@@ -3651,6 +3777,8 @@
           render();
           await Promise.all(ids.map(cloudDeleteServiceOrder));
         });
+        const melvinSyncBtn = $("#pcmMelvinSyncBtn");
+        if(melvinSyncBtn) melvinSyncBtn.addEventListener("click", () => runMelvinSyncNow());
       }
     }
     if(state.tab==="banners"){
