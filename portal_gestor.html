@@ -1812,16 +1812,30 @@
     }
     const logoW = 34, logoH = logoW;
     doc.addImage(PR_LOGO_BASE64, "PNG", MARGIN, MARGIN, logoW, logoH);
+    const contentWidth = PAGE_W - MARGIN*2;
     doc.setFont(undefined,"bold"); doc.setFontSize(20); doc.setTextColor(...BRAND);
-    doc.text(draft.title || "Relatório Fotográfico", MARGIN, MARGIN + logoH + 14);
+    const titleLines = doc.splitTextToSize(draft.title || "Relatório Fotográfico", contentWidth);
+    let y = MARGIN + logoH + 14;
+    doc.text(titleLines, MARGIN, y);
+    y += titleLines.length*8;
     doc.setFont(undefined,"normal"); doc.setFontSize(12); doc.setTextColor(90,90,90);
-    let y = MARGIN + logoH + 22;
-    if(draft.subtitle){ doc.text(draft.subtitle, MARGIN, y); y += 8; }
+    if(draft.subtitle){
+      const subLines = doc.splitTextToSize(draft.subtitle, contentWidth);
+      doc.text(subLines, MARGIN, y);
+      y += subLines.length*6 + 2;
+    }
     doc.setFontSize(10); doc.setTextColor(60,60,60);
-    if(draft.location){ doc.text(`Local/Ativo: ${draft.location}`, MARGIN, y); y += 6; }
-    if(draft.responsavel){ doc.text(`Responsável: ${draft.responsavel}`, MARGIN, y); y += 6; }
-    doc.text(`Data: ${brDate(draft.date)}`, MARGIN, y); y += 6;
-    doc.text(`Total de fotos: ${draft.photos.length}`, MARGIN, y); y += 6;
+    // Quebra qualquer uma dessas linhas que passar da margem em vez de deixar o texto sumir pra fora da
+    // página (bug real reportado: subtítulo comprido não quebrava e o resto sumia).
+    function prDrawMeta(text){
+      const lines = doc.splitTextToSize(text, contentWidth);
+      doc.text(lines, MARGIN, y);
+      y += lines.length*5;
+    }
+    if(draft.location) prDrawMeta(`Local/Ativo: ${draft.location}`);
+    if(draft.responsavel) prDrawMeta(`Responsável: ${draft.responsavel}`);
+    prDrawMeta(`Data: ${brDate(draft.date)}`);
+    prDrawMeta(`Total de fotos: ${draft.photos.length}`);
     doc.setDrawColor(...BRAND); doc.setLineWidth(0.6);
     doc.line(MARGIN, y+4, PAGE_W-MARGIN, y+4);
     prDrawFooter();
@@ -1839,7 +1853,8 @@
       if(posInPage===0){
         doc.addPage();
         doc.setFont(undefined,"bold"); doc.setFontSize(9); doc.setTextColor(...BRAND);
-        doc.text(draft.title || "Relatório Fotográfico", MARGIN, MARGIN);
+        const headerTitleLines = doc.splitTextToSize(draft.title || "Relatório Fotográfico", contentWidth-25);
+        doc.text(headerTitleLines[0], MARGIN, MARGIN);
         doc.setFont(undefined,"normal"); doc.setFontSize(9); doc.setTextColor(150,150,150);
         doc.text(`Página ${doc.internal.getNumberOfPages()-1}`, PAGE_W-MARGIN, MARGIN, { align:"right" });
         doc.setDrawColor(...BRAND); doc.setLineWidth(0.3);
