@@ -4,7 +4,7 @@
 //
 // Pra publicar uma atualização no futuro: suba os arquivos de novo com CACHE_NAME incrementado
 // (ex: "fertgrow-gestor-v2") — isso invalida o cache antigo automaticamente pros usuários.
-const CACHE_NAME = "fertgrow-gestor-v1";
+const CACHE_NAME = "fertgrow-gestor-v2";
 const SHELL_FILES = ["./portal_gestor.html", "./manifest-gestor.json"];
 
 self.addEventListener("install", (event) => {
