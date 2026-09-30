@@ -415,8 +415,8 @@
       o.status = "distribuida";
     }
   }
-  function employeeToRow(e){ return { id:e.id, name:e.name, email:e.email?e.email.trim().toLowerCase():null, cargo:e.cargo||"", company_id:e.companyId||null, shift_id:e.shiftId||null, admissao:e.admissao||null, status:e.status||"Ativo", rates:e.rates||{}, ferias_saldo_dias: e.feriasSaldoDias ?? 30, birth_date: e.birthDate||null }; }
-  function employeeFromRow(r, attendance, shiftHistory, profile){ return { id:r.id, name:r.name, email:r.email||"", cargo:r.cargo||"", companyId:r.company_id||"", shiftId:r.shift_id||"", admissao:r.admissao||"", status:r.status||"Ativo", rates:r.rates||{}, feriasSaldoDias: r.ferias_saldo_dias ?? 30, birthDate: r.birth_date||"", attendance: attendance||[], shiftHistory: shiftHistory||[], profileId: profile?.id||null, lockedAt: profile?.locked_at||null }; }
+  function employeeToRow(e){ return { id:e.id, name:e.name, email:e.email?e.email.trim().toLowerCase():null, cargo:e.cargo||"", company_id:e.companyId||null, shift_id:e.shiftId||null, admissao:e.admissao||null, status:e.status||"Ativo", rates:e.rates||{}, ferias_saldo_dias: e.feriasSaldoDias ?? 30, birth_date: e.birthDate||null, lider_geral: !!e.liderGeral }; }
+  function employeeFromRow(r, attendance, shiftHistory, profile){ return { id:r.id, name:r.name, email:r.email||"", cargo:r.cargo||"", companyId:r.company_id||"", shiftId:r.shift_id||"", admissao:r.admissao||"", status:r.status||"Ativo", rates:r.rates||{}, feriasSaldoDias: r.ferias_saldo_dias ?? 30, birthDate: r.birth_date||"", attendance: attendance||[], shiftHistory: shiftHistory||[], profileId: profile?.id||null, lockedAt: profile?.locked_at||null, liderGeral: !!r.lider_geral }; }
   function shiftHistoryRowToObj(r){ return { id:r.id, shiftId:r.shift_id, effectiveFrom:r.effective_from }; }
   function shiftHistoryObjToRow(employeeId, h){ return { employee_id:employeeId, shift_id:h.shiftId||null, effective_from:h.effectiveFrom }; }
   function attendanceToRow(employeeId, a){ return { id:a.id, employee_id:employeeId, date:a.date, turno:a.turno||"", hours:Number(a.hours||0), status: attendanceStatus(a), expected_hours: a.expectedHours ?? null, justification: a.justification||"", atestado: !!a.atestado, atraso: !!a.atraso }; }
@@ -442,6 +442,31 @@
     return 0;
   }
   function monthlyDivisor(shift){ return Number(shift?.weeklyHours || 44) * 5; }
+  // Mesmo cálculo do painel desktop (employeeMonthlyCostEstimate) -- soma HH×horas do mês (só se a
+  // empresa cobra por HH) com os demais custos fixos mensais (insalubridade, periculosidade etc, só os
+  // que a empresa tem marcado pra cobrar). Pedido do usuário: mostrar o valor cheio do mês no cadastro
+  // do funcionário aqui no app do gestor também, não só no painel desktop.
+  function employeeMonthlyCostEstimate(employee, company){
+    if(!company) return { total:0, hours:0 };
+    const shift = state.shifts.find(s=>s.id===employee.shiftId);
+    let total = 0;
+    const hours = shift ? monthlyDivisor(shift) : 0;
+    if(company.billing.hh && shift) total += hours * Number(employee.rates?.hh||0);
+    BILLING_KEYS.filter(k=>k!=="hh").forEach(key => { if(company.billing[key]) total += Number(employee.rates?.[key]||0); });
+    return { total, hours };
+  }
+  function costEstimateBoxHTML(companyId, shiftId, rates){
+    const company = state.companies.find(c=>c.id===companyId);
+    const shift = state.shifts.find(s=>s.id===shiftId);
+    if(!company) return `<div style="color:var(--muted);font-size:12.5px">Selecione uma empresa pra ver a estimativa de custo mensal.</div>`;
+    const { total, hours } = employeeMonthlyCostEstimate({ shiftId, rates }, company);
+    const hh = Number(rates?.hh||0);
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+        <span style="font-size:12px;color:var(--muted)">${shift ? `HH: ${money(hh)}/hora · ${hours}h/mês (divisor CLT: ${shift.weeklyHours||44}h semanais × 5, já com DSR)` : "Selecione um turno padrão pra estimar as horas"}</span>
+        <span style="font-size:16px;font-weight:700;color:var(--brand-light)">${money(total)}<span style="font-size:11px;color:var(--muted);font-weight:400"> /mês (valor cheio, estimado)</span></span>
+      </div>`;
+  }
   function shiftLabel(shift){
     if(!shift) return "—";
     if(shift.mode==="semanal") return `${esc(shift.name)} (${(shift.weekdays||[]).map(d=>WEEKDAY_LABELS[d]).join("/")||"sem dias"}, ${shift.hoursPerDay}h/dia, ${shift.weeklyHours||44}h/semana)`;
@@ -1104,7 +1129,15 @@
             <select class="input" id="e_status"><option ${f.status==='Ativo'?'selected':''}>Ativo</option><option ${f.status==='Inativo'?'selected':''}>Inativo</option></select>
           </div>
           <div class="field"><label>Saldo de férias (dias)</label><input type="number" class="input" id="e_ferias_saldo" value="${f.feriasSaldoDias}" /></div>
+          <label class="card" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:10px;background:var(--surface2)">
+            <input type="checkbox" id="e_lider_geral" ${f.liderGeral?'checked':''} style="margin-top:3px" />
+            <span>
+              <span style="font-size:13px;font-weight:600;display:block">👁 Líder de equipe — consulta geral de OS</span>
+              <span style="font-size:11.5px;color:var(--muted);line-height:1.5">No portal do colaborador (mesmo login de sempre), essa pessoa ganha uma aba extra em OS com as atrasadas e os indicadores da semana/mês de TODOS os setores — só consulta, sem poder editar, finalizar ou distribuir nada.</span>
+            </span>
+          </label>
           <div id="rateFields">${rateFieldsHTML(f.companyId)}</div>
+          <div class="card" id="costEstimateBox" style="margin-top:14px;background:var(--surface2)">${costEstimateBoxHTML(f.companyId, f.shiftId, f.rates)}</div>
           <div class="modal-actions">
             <button class="btn ghost" id="cancelModal" type="button">Cancelar</button>
             <button class="btn" id="saveEmployee" type="button">Salvar funcionário</button>
@@ -1116,12 +1149,26 @@
     $("#closeModal").addEventListener("click", close);
     $("#cancelModal").addEventListener("click", close);
     $("#backdrop").addEventListener("click", e => { if(e.target.id==="backdrop") close(); });
-    $("#e_company").addEventListener("change", e => { $("#rateFields").innerHTML = rateFieldsHTML(e.target.value); });
+    const currentRates = () => {
+      const companyId = $("#e_company").value;
+      const company = state.companies.find(c=>c.id===companyId);
+      const rates = {...f.rates};
+      if(company) BILLING_KEYS.filter(k=>company.billing[k]).forEach(k => { const el = $(`#e_rate_${k}`); if(el) rates[k] = Number(el.value||0); });
+      return rates;
+    };
+    const refreshEstimate = () => { $("#costEstimateBox").innerHTML = costEstimateBoxHTML($("#e_company").value, $("#e_shift").value, currentRates()); };
+    $("#e_company").addEventListener("change", e => {
+      $("#rateFields").innerHTML = rateFieldsHTML(e.target.value);
+      $("#rateFields").addEventListener("input", refreshEstimate);
+      refreshEstimate();
+    });
+    $("#rateFields").addEventListener("input", refreshEstimate);
     const refreshShiftEffectiveWrap = () => {
       const changed = f.shiftId && $("#e_shift").value && $("#e_shift").value !== f.shiftId;
       $("#e_shiftEffectiveWrap").style.display = changed ? "block" : "none";
     };
     $("#e_shift").addEventListener("change", refreshShiftEffectiveWrap);
+    $("#e_shift").addEventListener("change", refreshEstimate);
     refreshShiftEffectiveWrap();
     $("#saveEmployee").addEventListener("click", async () => {
       const companyId = $("#e_company").value;
@@ -1133,6 +1180,7 @@
         companyId, shiftId: $("#e_shift").value, admissao: $("#e_admissao").value, status: $("#e_status").value,
         rates, attendance: f.attendance || [], shiftHistory: f.shiftHistory || [],
         feriasSaldoDias: Math.max(0, Number($("#e_ferias_saldo").value)||0),
+        liderGeral: $("#e_lider_geral").checked,
       };
       // Lida ANTES de close() apagar o modal do DOM — senão o campo já não existe mais na hora de ler
       // o valor (bug real: a data escolhida nunca era usada, sempre caía no "hoje").
